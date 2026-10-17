@@ -1,0 +1,10 @@
+# Tested with Python 3.13. Qiskit 1.x is required: qiskit-algorithms 0.3.0 and
+# qiskit-nature 0.7 do not work with Qiskit 2.x (the V1 Estimator was removed).
+qiskit>=1.1,<2
+qiskit-aer
+qiskit-algorithms==0.3.0
+qiskit-nature==0.7.2
+pyscf
+numpy<2
+scipy
+matplotlib

@@ -1,0 +1,38 @@
+# Combined requirements for the whole repository (superset of every folder's requirements).
+#
+# Tested with Python 3.11.
+#
+# Hard pins come from VQE/ and Hamiltonian/ (they reproduce the numbers in the READMEs):
+#   * qiskit 1.x       : qiskit-algorithms 0.3.0 and qiskit-nature 0.7.x break on Qiskit 2.x
+#   * scipy < 1.14     : NumPyMinimumEigensolver uses sparse-matrix `.H`, removed in newer SciPy
+#   * numpy 1.23.5     : the version the VQE results were generated with
+#
+# stock-analyzer/requirements.txt asks for newer minimums (numpy>=2.5, scipy>=1.18, qiskit>=2.5).
+# Those cannot coexist with the pins above, so stock-analyzer is installed with the older
+# versions here. It only uses qiskit's QuantumCircuit + AerSimulator, which Qiskit 1.x provides.
+
+# --- Quantum / chemistry (VQE/, Hamiltonian/, phase-estimation-basics/) ---
+qiskit==1.1.0
+qiskit-aer==0.17.2
+qiskit-algorithms==0.3.0
+qiskit-nature==0.7.2
+pyscf==2.13.0
+
+# --- Numerics and plotting (all folders) ---
+numpy==1.23.5
+scipy==1.10.1
+matplotlib>=3.7.0
+pandas>=2.3.0
+
+# --- quantum-computing-portfolio/ ---
+streamlit>=1.30.0
+pytest>=8.0.0
+
+# --- stock-analyzer/ ---
+yfinance>=1.5.0
+plotly>=6.9.0
+tabulate>=0.10.0
+colorama>=0.4.6
+ibm-watsonx-ai>=1.6.0
+kiteconnect>=5.0.0
+pyarrow>=14.0.0
