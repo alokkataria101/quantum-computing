@@ -2,6 +2,8 @@
 
 This document walks through the full chain: **continuous Hamiltonian → finite-difference matrix → diagonalisation → eigenvalues and eigenstates**. The hydrogen atom is used as the central example because its exact solution is known and every approximation can be verified.
 
+> 📄 **Companion study guide:** [`Hydrogen_Atom_Radial_Schrodinger_Linear_Algebra_Study_Guide.docx`](Hydrogen_Atom_Radial_Schrodinger_Linear_Algebra_Study_Guide.docx) — a self-contained technical reference covering the full derivation, linear algebra background, normalization, convergence analysis, a line-by-line code map, and interview Q&A.
+
 ---
 
 ## Table of Contents
