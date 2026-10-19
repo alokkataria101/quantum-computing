@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+storage/books/*.pdf
+storage/indexes/
+storage/exports/
+*.db
+.env

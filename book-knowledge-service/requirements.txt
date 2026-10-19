@@ -1,0 +1,38 @@
+# ── Web framework ──────────────────────────────────────────────────────────────
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9      # file uploads
+
+# ── Data validation ────────────────────────────────────────────────────────────
+pydantic>=2.7
+pydantic-settings>=2.3
+
+# ── PDF processing ─────────────────────────────────────────────────────────────
+PyMuPDF>=1.24                # fitz: text extraction, page rendering
+Pillow>=10.3                 # image handling for rendered pages
+
+# ── OCR (optional but included) ────────────────────────────────────────────────
+pytesseract>=0.3.10          # Tesseract OCR wrapper (requires system tesseract)
+
+# ── PDF generation ─────────────────────────────────────────────────────────────
+reportlab>=4.2               # export to PDF
+
+# ── HTML templating ────────────────────────────────────────────────────────────
+jinja2>=3.1
+
+# ── Database ──────────────────────────────────────────────────────────────────
+aiosqlite>=0.20              # async SQLite (FTS5 built-in)
+
+# ── Background jobs ────────────────────────────────────────────────────────────
+# Using asyncio-based in-process job runner for the initial prototype.
+# Replace with Celery + Redis for production scale.
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-slugify>=8.0
+aiofiles>=23.2
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=8.0
+pytest-asyncio>=0.23
+httpx>=0.27                  # async test client for FastAPI
+pytest-cov>=5.0
