@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# config.yaml  –  Default configuration for quantum-function-qft
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Signal definition ────────────────────────────────────────────────────────
+# Any valid Python expression using x, numpy as np, and math constants pi / e.
+# Supported functions: sin, cos, tan, exp, log, sqrt, abs
+function_expr: "2*sin(5*x) + 7*sin(100*x + pi/4) + 2.1 - sin(51*x + 3*pi/17)"
+
+# ── Sampling ─────────────────────────────────────────────────────────────────
+x_start: 0.0          # start of x domain
+x_end:   109.0        # end of x domain  (inclusive)
+n_points: 256         # number of equally-spaced sample points (power of two preferred)
+
+# ── Preprocessing ─────────────────────────────────────────────────────────────
+# Options: "raw" | "mean_centred" | "normalised_only"
+#   raw             – use f(x) as-is after sampling
+#   mean_centred    – subtract DC offset (mean) before encoding
+#   normalised_only – L2 normalise without mean removal
+representation: "mean_centred"
+
+# ── Quantum circuit ───────────────────────────────────────────────────────────
+n_qubits: null          # null = automatic ceil(log2(n_points))
+padding_policy: "next_pow2"   # "next_pow2" | "reject"
+n_shots: 8192
+
+# ── Execution mode ────────────────────────────────────────────────────────────
+# "classical_only" | "statevector" | "shot_based"
+execution_mode: "statevector"
+
+# ── Peak detection ────────────────────────────────────────────────────────────
+peak_threshold_fraction: 0.05   # report bins with power >= this fraction of max
+top_k_peaks: 10                 # max number of peaks to report
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output_dir: "outputs"
+random_seed: 42
+report_format: "html"
