@@ -11,6 +11,7 @@ Hands-on quantum computing and quantum physics experiments in Python: Schröding
 | [`VQE/`](VQE/) | Five-step VQE tutorial: Hartree–Fock → helium → H₂ dissociation → CO₂ active space → CCSD benchmark | [`VQE/README.md`](VQE/README.md) |
 | [`quantum-computing-portfolio/`](quantum-computing-portfolio/) | Six small projects (`quantum_lab` library, demos, tests, Streamlit app) | [`README.md`](quantum-computing-portfolio/README.md) |
 | [`stock-analyzer/`](stock-analyzer/) | Stock analysis with quantum encodings; needs internet for most features | [`README.md`](stock-analyzer/README.md) |
+| [`quantum-stock-qft/`](quantum-stock-qft/) | **Quantum Fourier Analysis of Financial Time Series** — downloads Yahoo Finance data, applies QFT via Qiskit, compares against classical FFT, Streamlit dashboard, HTML report | [`quantum-stock-qft/README.md`](quantum-stock-qft/README.md) |
 | [`misc/`](misc/) | Notes and documents | – |
 
 ## 1. Prerequisites
@@ -61,10 +62,13 @@ The root [`requirements.txt`](requirements.txt) is a superset of the requirement
 |---|---|
 | [`VQE/requirements.txt`](VQE/requirements.txt) | `qiskit`, `qiskit-aer`, `qiskit-algorithms`, `qiskit-nature`, `pyscf`, `numpy`, `scipy` (exact pins) |
 | [`Hamiltonian/h2-quantum-simulation/requirements.txt`](Hamiltonian/h2-quantum-simulation/requirements.txt) | same libraries plus `matplotlib` |
-| [`quantum-computing-portfolio/requirements.txt`](quantum-computing-portfolio/requirements.txt) | `matplotlib`, `streamlit`, `pytest` |
+| [`quantum-computing-portfolio/requirements.txt`](quantum-computing-portfolio/requirements.txt) | `matplotlib`, `streamlit`, `pytest`, `pytest-cov` |
 | [`stock-analyzer/requirements.txt`](stock-analyzer/requirements.txt) | `pandas`, `yfinance`, `plotly`, `tabulate`, `colorama`, `ibm-watsonx-ai`, `kiteconnect`, `pyarrow` |
+| [`quantum-stock-qft/requirements.txt`](quantum-stock-qft/requirements.txt) | `numpy`, `scipy`, `pandas`, `yfinance`, `qiskit`, `qiskit-aer`, `matplotlib`, `plotly`, `kaleido`, `streamlit`, `pyyaml`, `jinja2`, `pytest`, `pytest-cov` |
 
 Where folders disagree, the **older, pinned versions win**, because the VQE/Hamiltonian code breaks on newer ones (Qiskit 2.x removed the V1 `Estimator`, and SciPy ≥ 1.14 removed sparse `.H`). `stock-analyzer/requirements.txt` asks for `numpy>=2.5` and `qiskit>=2.5`; the root file uses the older versions instead. The stock analyzer only needs `QuantumCircuit` and `AerSimulator`, which Qiskit 1.x provides, and its offline test passes with them. Its network features were not tested here.
+
+**`quantum-stock-qft/` is designed to run in its own virtual environment** (see its own `README.md`). Its packages (`pyyaml`, `jinja2`, `kaleido`, `pytest-cov`) are also listed in the root `requirements.txt` for completeness, but the sub-project venv is the recommended way to run it.
 
 ## 4. Run everything and save the results
 
@@ -105,6 +109,13 @@ The report is written after every script, so you can open it while the run is st
 | `stock-analyzer/test_quantum.py` | the only stock-analyzer script that works offline |
 | `quantum-computing-portfolio/tests/` | the pytest suite, run as one job |
 
+> **Note:** `quantum-stock-qft/` is not included in `run_all.py` — it has its own venv, Streamlit UI, and test suite. Run it separately:
+> ```bash
+> cd quantum-stock-qft && source .venv/bin/activate
+> pytest tests/ -v            # 36 pass, 11 skip (Qiskit optional)
+> streamlit run app.py        # interactive dashboard
+> ```
+
 The library code (`quantum-computing-portfolio/src/`, most of `stock-analyzer/`) is not run directly; it is exercised through the demos and tests above.
 
 ### Options
@@ -139,6 +150,30 @@ Other entry points:
 pytest quantum-computing-portfolio/tests          # portfolio unit tests
 streamlit run quantum-computing-portfolio/apps/quantum_teaching_studio.py   # interactive app
 ```
+
+## 6. quantum-stock-qft — Quick Reference
+
+This sub-project has its own isolated environment and Streamlit dashboard.
+
+```bash
+cd quantum-stock-qft
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pytest tests/ -v                   # 36 passed, 11 skipped (Qiskit tests skip without install)
+streamlit run app.py               # open http://localhost:8501
+```
+
+What it does:
+
+1. Downloads daily closing prices from **Yahoo Finance** (`yfinance`).
+2. Converts to one of four representations: raw prices, mean-centred prices, daily % returns, mean-centred returns.
+3. Zero-pads to M = 2^q and L2-normalises → quantum amplitude state **ψ**.
+4. Applies the **Quantum Fourier Transform** via Qiskit Aer statevector or shot-based simulation.
+5. Compares QFT probability distribution against classical NumPy FFT power spectrum (Parseval equivalence verified).
+6. Identifies dominant frequency bins and their approximate periods in trading observations.
+7. Generates a self-contained **HTML research report** with all figures embedded.
+
+See [`quantum-stock-qft/docs/methodology.md`](quantum-stock-qft/docs/methodology.md) for the full mathematical derivation and [`quantum-stock-qft/docs/research_limitations.md`](quantum-stock-qft/docs/research_limitations.md) for critical caveats before interpreting any results.
 
 ## Troubleshooting
 

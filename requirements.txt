@@ -10,6 +10,9 @@
 # stock-analyzer/requirements.txt asks for newer minimums (numpy>=2.5, scipy>=1.18, qiskit>=2.5).
 # Those cannot coexist with the pins above, so stock-analyzer is installed with the older
 # versions here. It only uses qiskit's QuantumCircuit + AerSimulator, which Qiskit 1.x provides.
+#
+# quantum-stock-qft/ also works with these versions but is designed to run in its own
+# virtual environment (see quantum-stock-qft/requirements.txt and quantum-stock-qft/README.md).
 
 # --- Quantum / chemistry (VQE/, Hamiltonian/, phase-estimation-basics/) ---
 qiskit==1.1.0
@@ -27,6 +30,7 @@ pandas>=2.3.0
 # --- quantum-computing-portfolio/ ---
 streamlit>=1.30.0
 pytest>=8.0.0
+pytest-cov>=5.0
 
 # --- stock-analyzer/ ---
 yfinance>=1.5.0
@@ -36,3 +40,8 @@ colorama>=0.4.6
 ibm-watsonx-ai>=1.6.0
 kiteconnect>=5.0.0
 pyarrow>=14.0.0
+
+# --- quantum-stock-qft/ (also has its own venv; listed here for completeness) ---
+pyyaml>=6.0
+jinja2>=3.1
+kaleido>=0.2
