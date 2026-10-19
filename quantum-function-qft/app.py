@@ -321,7 +321,7 @@ with tab_results:
                 "Expected DFT bin": f"{c.freq_per_unit * x_span:.3f}",
                 "Amplitude": f"{c.amplitude:.4g}",
             })
-        st.dataframe(comp_data, use_container_width=True)
+        st.table(comp_data)
         st.caption(
             "Expected DFT bin = f × x_span. "
             "Non-integer bins cause spectral leakage into adjacent bins."
