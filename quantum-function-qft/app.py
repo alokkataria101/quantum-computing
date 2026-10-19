@@ -312,16 +312,25 @@ with tab_results:
     if signal.known_components:
         st.subheader("🎯 Known Analytical Components (Ground Truth)")
         x_span = signal.x_end - signal.x_start
-        comp_data = []
-        for c in signal.known_components:
-            comp_data.append({
-                "Component": c.label,
-                "ω (rad/x-unit)": f"{c.angular_freq:.5g}",
-                "f (cyc/x-unit)": f"{c.freq_per_unit:.5g}",
-                "Expected DFT bin": f"{c.freq_per_unit * x_span:.3f}",
-                "Amplitude": f"{c.amplitude:.4g}",
-            })
-        st.table(comp_data)
+        # Build a plain HTML table — avoids pyarrow/numpy version conflict
+        rows_html = "".join(
+            f"<tr><td>{c.label}</td><td>{c.angular_freq:.5g}</td>"
+            f"<td>{c.freq_per_unit:.5g}</td>"
+            f"<td>{c.freq_per_unit * x_span:.3f}</td>"
+            f"<td>{c.amplitude:.4g}</td></tr>"
+            for c in signal.known_components
+        )
+        st.markdown(
+            "<table style='width:100%;border-collapse:collapse;font-size:.88em'>"
+            "<thead><tr style='background:#f0f4ff'>"
+            "<th style='border:1px solid #e5e7eb;padding:6px 10px'>Component</th>"
+            "<th style='border:1px solid #e5e7eb;padding:6px 10px'>ω (rad/x-unit)</th>"
+            "<th style='border:1px solid #e5e7eb;padding:6px 10px'>f (cyc/x-unit)</th>"
+            "<th style='border:1px solid #e5e7eb;padding:6px 10px'>Expected DFT bin</th>"
+            "<th style='border:1px solid #e5e7eb;padding:6px 10px'>Amplitude</th>"
+            f"</tr></thead><tbody>{rows_html}</tbody></table>",
+            unsafe_allow_html=True,
+        )
         st.caption(
             "Expected DFT bin = f × x_span. "
             "Non-integer bins cause spectral leakage into adjacent bins."
