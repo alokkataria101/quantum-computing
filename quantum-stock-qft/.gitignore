@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+outputs/*.html
+outputs/*.md
+data/*.csv

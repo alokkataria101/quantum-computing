@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# config.yaml  –  Default configuration for quantum-stock-qft
+# All values can be overridden at run-time via the Streamlit sidebar or CLI.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Data acquisition ─────────────────────────────────────────────────────────
+ticker: "IBM"
+n_observations: 256          # number of closing-price rows (or returns) to use
+use_adjusted_close: false    # true → use Adj Close column instead of Close
+download_period: "5y"        # yfinance period string used when no explicit dates
+start_date: null             # ISO date string, e.g. "2020-01-01"; null = auto
+end_date:   null             # ISO date string; null = today
+
+# ── Preprocessing ─────────────────────────────────────────────────────────────
+# Options: "raw_prices" | "centred_prices" | "returns" | "centred_returns"
+input_representation: "centred_returns"
+
+# ── Quantum circuit ───────────────────────────────────────────────────────────
+n_qubits: null               # null = automatic (ceil(log2(n_observations)))
+padding_policy: "next_pow2"  # "next_pow2" | "reject"
+n_shots: 8192
+
+# ── Execution mode ────────────────────────────────────────────────────────────
+# Options: "classical_only" | "statevector" | "shot_based"
+execution_mode: "statevector"
+
+# IBM Quantum hardware (optional – disabled by default)
+ibm_quantum:
+  enabled: false
+  token: null                # set via environment variable IQP_TOKEN instead
+  backend: null              # e.g. "ibm_brisbane"
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output_dir: "outputs"
+data_dir:   "data"
+random_seed: 42
+report_format: "html"        # "html" | "markdown"
