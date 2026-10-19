@@ -22,10 +22,10 @@ logger = logging.getLogger(__name__)
 # ── lazy Qiskit imports (keeps import errors descriptive) ─────────────────────
 try:
     from qiskit import QuantumCircuit, transpile
-    from qiskit.circuit.library import QFT, StatePreparation
+    from qiskit.circuit.library import QFTGate, StatePreparation
     from qiskit_aer import AerSimulator
-    from qiskit_aer.primitives import StatevectorSampler
     QISKIT_AVAILABLE = True
+    _QISKIT_IMPORT_ERROR = ""
 except ImportError as _qiskit_err:
     QISKIT_AVAILABLE = False
     _QISKIT_IMPORT_ERROR = str(_qiskit_err)
@@ -62,6 +62,21 @@ class QFTResult:
 
     def check_normalisation(self, tol: float = 1e-6) -> bool:
         return abs(float(np.sum(self.probabilities)) - 1.0) < tol
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bit-reversal helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _bitrev_index(k: int, n_qubits: int) -> int:
+    """Return the bit-reversal of integer k for a given number of qubits."""
+    return int(f"{k:0{n_qubits}b}"[::-1], 2)
+
+
+def _bitrev_permutation(n_qubits: int) -> np.ndarray:
+    """Return index array p such that p[k] = bitrev(k), for reordering arrays."""
+    M = 2 ** n_qubits
+    return np.array([_bitrev_index(k, n_qubits) for k in range(M)], dtype=int)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,8 +123,9 @@ def build_qft_circuit(psi: np.ndarray, n_qubits: int) -> "QuantumCircuit":
     state_prep = StatePreparation(psi_c, label="StatePrep")
     qc.append(state_prep, range(n_qubits))
 
-    # QFT gate (Qiskit convention: |j⟩ → (1/√M) Σ_k e^{2πijk/M}|k⟩)
-    qft_gate = QFT(n_qubits, do_swaps=True, approximation_degree=0, name="QFT")
+    # QFTGate applies the transform with output in natural frequency order
+    # (do_swaps=True is the default and aligns qubit ordering with index k)
+    qft_gate = QFTGate(num_qubits=n_qubits)
     qc.append(qft_gate, range(n_qubits))
 
     qc.measure_all()
@@ -140,7 +156,7 @@ def run_statevector(psi: np.ndarray, n_qubits: int) -> QFTResult:
     qc_sv = QuantumCircuit(n_qubits)
     state_prep = StatePreparation(psi_c, label="StatePrep")
     qc_sv.append(state_prep, range(n_qubits))
-    qft_gate = QFT(n_qubits, do_swaps=True, approximation_degree=0, name="QFT")
+    qft_gate = QFTGate(num_qubits=n_qubits)
     qc_sv.append(qft_gate, range(n_qubits))
     # No measure_all – need statevector
 
@@ -151,9 +167,11 @@ def run_statevector(psi: np.ndarray, n_qubits: int) -> QFTResult:
     result = job.result()
     sv = np.array(result.get_statevector(compiled))
 
-    # Qiskit's statevector is already in computational-basis order |0⟩…|2^q-1⟩
-    # Bit ordering: qubit 0 is the LSB; QFT with do_swaps=True reverses this,
-    # so the output index k corresponds directly to frequency bin k.
+    # Qiskit stores the statevector with qubit 0 as the LSB (little-endian).
+    # This means index k in the raw statevector corresponds to frequency bin
+    # bit_reverse(k, n_qubits) in the natural ordering used by numpy_qft / FFT.
+    # We reorder so that probabilities[k] == |A[k]|^2 in frequency-bin order.
+    sv = sv[_bitrev_permutation(n_qubits)]
     probs = np.abs(sv) ** 2
 
     # Build diagram from the measurement-included circuit
@@ -193,14 +211,17 @@ def run_shot_based(psi: np.ndarray, n_qubits: int, n_shots: int = 8192) -> QFTRe
     result = job.result()
     counts_raw: dict = result.get_counts(compiled)
 
-    # Convert bit-string counts to integer-indexed array
+    # Convert bit-string counts to natural frequency-bin order.
+    # Qiskit bit strings have qubit 0 as the rightmost character (little-endian),
+    # so reading the string as an integer gives a bit-reversed frequency index.
+    # We reverse the bits to get the natural bin index k.
     sampled = np.zeros(M, dtype=np.float64)
     counts_int: dict[int, int] = {}
     for bitstring, cnt in counts_raw.items():
-        # Qiskit bit strings: qubit 0 is rightmost character
-        idx = int(bitstring.replace(" ", ""), 2)
-        sampled[idx] = cnt / n_shots
-        counts_int[idx] = cnt
+        raw_idx = int(bitstring.replace(" ", ""), 2)
+        idx = _bitrev_index(raw_idx, n_qubits)
+        sampled[idx] += cnt / n_shots
+        counts_int[idx] = counts_int.get(idx, 0) + cnt
 
     diagram = qc.draw(output="text").single_string()
 
