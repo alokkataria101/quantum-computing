@@ -108,19 +108,19 @@ SAMPLE_FUNCTIONS: list[SampleFunction] = [
         ],
     ),
     SampleFunction(
-        name="Sample 2 — Original motivating example",
-        expr="2*sin(5*x) + 7*sin(100*x + pi/4) + 2.1 - sin(51*x + 3*pi/17)",
-        x_start=0.0, x_end=109.0, n_points=256,
+        name="Sample 2 — Two clean sinusoids with DC",
+        expr="2*sin(2*pi*3*x) + 1.5*sin(2*pi*7*x + pi/4) + 2",
+        x_start=0.0, x_end=1.0, n_points=256,
         difficulty="Moderate",
         description=(
-            "Three sinusoidal components at ω = 5, 100, 51 rad/unit (f ≈ 0.796, 15.92, 8.12 cycles/unit). "
-            "Amplitudes 2, 7, −1. DC offset 2.1."
+            "Two sinusoidal components at f = 3 and 7 cycles/unit with a DC offset of 2. "
+            "Amplitudes 2 and 1.5, phase shift π/4 on the 7 Hz component."
         ),
         why_works=[
-            "Angular frequencies 5, 100, 51 → cycles/unit = ω/2π ≈ 0.796, 15.92, 8.12.",
-            "Expected DFT bins ≈ f × x_span = 86.8, 1735, 885 (non-integer → spectral leakage visible).",
-            "DC offset 2.1 dominates bin 0; mean-centring removes it before QFT.",
-            "Amplitude ratio 7:2:1 → dominant peak at ω=100 clearly visible.",
+            "Frequencies 3 and 7 cycles/unit land exactly on DFT bins (integer × 1/x_span) → zero spectral leakage.",
+            "With N=256 points over [0,1], bin k corresponds to f = k cycles/unit; peaks at k=3 and k=7.",
+            "DC offset 2 dominates bin 0; mean-centring removes it cleanly before QFT.",
+            "Phase offset π/4 on f=7 component is visible in the complex spectrum but not the power spectrum.",
         ],
     ),
     SampleFunction(
