@@ -12,6 +12,10 @@ import sys
 import traceback
 from pathlib import Path
 
+# Silence Qiskit's verbose transpiler pass-manager INFO logs
+logging.getLogger("qiskit").setLevel(logging.WARNING)
+logging.getLogger("qiskit_aer").setLevel(logging.WARNING)
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
