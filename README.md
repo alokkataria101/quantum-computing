@@ -84,7 +84,7 @@ curl http://localhost:8000/books/<BOOK_ID>/chapters \
   | jq '.chapters[] | {number, title, page_start, page_end}'
 ```
 
-Example titles from H.C. Verma Part 1:
+Example titles from Book-1 Part 1:
 
 | Chapter | Title keyword to use |
 |---------|---------------------|
