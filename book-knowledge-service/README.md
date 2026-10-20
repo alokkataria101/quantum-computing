@@ -266,6 +266,87 @@ Available `question_type` values: `objective_1` · `objective_2` · `exercise` �
 
 ---
 
+### Step 14 — Read a full chapter in the browser
+
+Open the viewer at the chapter's first page. Use Previous / Next to page through it:
+
+```
+http://localhost:8000/viewer/<BOOK_ID>?page=<PAGE_START>
+```
+
+To find `<PAGE_START>` for a chapter:
+
+```bash
+curl http://localhost:8000/books/<BOOK_ID>/chapters | jq '.chapters[] | {number, title, page_start, page_end}'
+```
+
+To render any page as a PNG image:
+
+```bash
+curl http://localhost:8000/books/<BOOK_ID>/pages/<PAGE_NUMBER>/render -o page.png
+open page.png
+```
+
+---
+
+### Step 15 — Extract questions from ALL chapters at once (bulk extract)
+
+Run this loop to trigger extraction for every chapter in one go, then wait ~10 seconds for all jobs to finish:
+
+```bash
+for ch_id in $(curl -s http://localhost:8000/books/<BOOK_ID>/chapters | jq -r '.chapters[].chapter_id'); do
+  echo "Extracting $ch_id...";
+  curl -s -X POST http://localhost:8000/books/<BOOK_ID>/chapters/$ch_id/extract > /dev/null;
+  sleep 1;
+done
+echo "Done — wait ~10 s then proceed to export."
+```
+
+---
+
+### Step 16 — Export the entire book's questions (all chapters, all types)
+
+After bulk extraction is complete:
+
+```bash
+# HTML — open in browser, nicely formatted
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=html" -o all_questions.html
+open all_questions.html
+
+# JSON — machine-readable
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=json" -o all_questions.json
+
+# CSV — open in Excel / Numbers
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=csv" -o all_questions.csv
+
+# PDF — printable
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf" -o all_questions.pdf
+```
+
+---
+
+### Step 17 — Get all exercises (or any type) from a specific topic
+
+Use `generate` with a high `count` and `random=false` to get everything in page order:
+
+```bash
+# All exercises from chapters matching "light" (e.g. optics)
+curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=light&count=100&question_type=exercise&random=false" \
+  | jq '.questions[].question_text'
+
+# All Objective I MCQs from chapters matching "motion"
+curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=motion&count=100&question_type=objective_1&random=false" \
+  | jq '.questions[] | {number: .question_number, text: .question_text}'
+
+# All short-answer questions from chapters matching "wave"
+curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=wave&count=100&question_type=short_answer&random=false" \
+  | jq '.questions[].question_text'
+```
+
+> The `topic` keyword is matched against chapter **titles**. Run Step 6 (`GET /chapters`) first to see the exact titles available.
+
+---
+
 ## Run Tests
 
 ```bash
