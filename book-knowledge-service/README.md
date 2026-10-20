@@ -203,6 +203,25 @@ curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf"  -o questions.pdf
 
 ---
 
+### Step 13 — Generate N questions on a topic (GET)
+
+```bash
+# 10 random Objective I questions from optics chapters
+curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=optics&count=10&question_type=objective_1&random=true" | jq .
+
+# 5 exercises from Newton's Laws, in page order
+curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=newton&count=5&question_type=exercise&random=false" | jq .
+
+# 8 short-answer questions from thermodynamics, randomly shuffled
+curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=thermodynamics&count=8&question_type=short_answer&random=true" | jq .
+```
+
+Available `question_type` values: `objective_1` · `objective_2` · `exercise` · `short_answer` · `worked_example` · `example`
+
+> **Prerequisite:** questions must have been extracted first (Steps 10–11). The `topic` matches against chapter titles — use `GET /books/<BOOK_ID>/chapters` to see exact titles.
+
+---
+
 ## Run Tests
 
 ```bash
@@ -242,6 +261,7 @@ cd book-knowledge-service
 | POST | `/books/{book_id}/chapters/{ch_id}/extract` | Start extraction job |
 | GET | `/jobs/{job_id}` | Check job progress |
 | GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | Export questions |
+| GET | `/books/{book_id}/questions/generate?topic=...&count=N&question_type=...&random=true\|false` | Generate N questions on a topic |
 | GET | `/viewer/{book_id}?page=n` | HTML page viewer |
 
 Full interactive docs at `/docs` (Swagger UI) and `/redoc`.

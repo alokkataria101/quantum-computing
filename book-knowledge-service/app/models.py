@@ -138,6 +138,16 @@ class QuestionList(BaseModel):
     chapter_id: str
 
 
+# ── Generate ──────────────────────────────────────────────────────────────────
+
+class GenerateResult(BaseModel):
+    questions: list[QuestionRecord]
+    total: int
+    topic: str
+    question_type: QuestionType
+    random: bool
+
+
 # ── Job ───────────────────────────────────────────────────────────────────────
 
 class JobRecord(BaseModel):

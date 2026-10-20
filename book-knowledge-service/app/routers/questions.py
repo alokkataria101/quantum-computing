@@ -1,17 +1,20 @@
-"""app/routers/questions.py – question extraction endpoints."""
+"""app/routers/questions.py – question extraction and generation endpoints."""
 
 from __future__ import annotations
 
 import asyncio
+import random as _random
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
 from ..database import get_db
 from ..jobs import create_job, update_job
-from ..models import QuestionList, QuestionRecord, QuestionType, JobRecord, JobStatus, JobType
+from ..models import (
+    ChapterRecord, GenerateResult, JobRecord, JobStatus, JobType,
+    QuestionList, QuestionRecord, QuestionType,
+)
 from ..question_extractor import extract_questions_from_chapter
-from ..models import ChapterRecord
 
 router = APIRouter(tags=["questions"])
 
@@ -146,4 +149,80 @@ def _row_to_q(row) -> QuestionRecord:
         page_start=d["page_start"], page_end=d["page_end"],
         confidence=d["confidence"],
         extraction_method=d.get("extraction_method", "pattern"),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /books/{book_id}/questions/generate
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get(
+    "/books/{book_id}/questions/generate",
+    response_model=GenerateResult,
+    summary="Generate N questions on a topic",
+    description=(
+        "Find chapters whose title matches `topic`, then return `count` questions "
+        "of the given `question_type`. Use `random=true` to shuffle, `random=false` "
+        "to return them in page order."
+    ),
+)
+async def generate_questions(
+    book_id: str,
+    topic: str = Query(..., description="Topic keyword, e.g. 'optics', 'newton', 'thermodynamics'"),
+    count: int = Query(10, ge=1, le=100, description="Number of questions to return"),
+    question_type: QuestionType = Query(QuestionType.objective_1, description="Type of question"),
+    randomize: bool = Query(True, alias="random", description="Shuffle results (true) or return in page order (false)"),
+):
+    db = await get_db()
+
+    # 1. Find chapters whose title contains the topic keyword (case-insensitive)
+    async with db.execute(
+        "SELECT chapter_id FROM chapters WHERE book_id = ? AND LOWER(title) LIKE ?",
+        (book_id, f"%{topic.lower()}%"),
+    ) as cur:
+        chapter_rows = await cur.fetchall()
+
+    if not chapter_rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No chapters found matching topic '{topic}'. "
+                   f"Use GET /books/{book_id}/chapters to see available chapter titles.",
+        )
+
+    chapter_ids = [r["chapter_id"] for r in chapter_rows]
+
+    # 2. Pull questions of the requested type from those chapters
+    placeholders = ",".join("?" * len(chapter_ids))
+    async with db.execute(
+        f"""SELECT * FROM questions
+            WHERE book_id = ?
+              AND chapter_id IN ({placeholders})
+              AND question_type = ?
+            ORDER BY page_start, question_number""",
+        [book_id, *chapter_ids, question_type.value],
+    ) as cur:
+        rows = await cur.fetchall()
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No '{question_type.value}' questions found for topic '{topic}'. "
+                f"Run POST /books/{book_id}/chapters/<ch_id>/extract first to populate questions."
+            ),
+        )
+
+    questions = [_row_to_q(r) for r in rows]
+
+    # 3. Shuffle or keep in order, then slice to count
+    if randomize:
+        _random.shuffle(questions)
+    selected = questions[:count]
+
+    return GenerateResult(
+        questions=selected,
+        total=len(selected),
+        topic=topic,
+        question_type=question_type,
+        random=randomize,
     )
