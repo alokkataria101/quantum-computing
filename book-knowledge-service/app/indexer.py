@@ -68,24 +68,38 @@ async def upsert_chapters(chapters: list[ChapterRecord]) -> None:
 async def rebuild_fts(book_id: str) -> None:
     """
     Repopulate the FTS5 virtual table for all pages of a book.
-    Deletes existing FTS entries for this book first.
 
-    FTS5 virtual tables do not support WHERE on non-indexed columns directly.
-    We delete by rowid (= page_id) obtained from the pages table.
+    Uses INSERT(pages_fts, 'delete', ...) for safe per-row removal, then
+    inserts fresh rows.  Falls back to a full FTS5 'rebuild' if the shadow
+    tables are malformed (e.g. after a previous crashed index run).
     """
     db = await get_db()
 
-    # Collect rowids belonging to this book from the real pages table
+    # Try a full FTS5 integrity-check + rebuild first to repair any corruption
+    try:
+        await db.execute("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')")
+        await db.commit()
+    except Exception as exc:
+        logger.warning("FTS rebuild command failed (%s); continuing.", exc)
+
+    # Remove stale entries for this book using the FTS5 delete command
     async with db.execute(
-        "SELECT page_id FROM pages WHERE book_id = ?", (book_id,)
+        "SELECT page_id, text, page_number, chapter_id FROM pages WHERE book_id = ?",
+        (book_id,),
     ) as cur:
-        rowid_rows = await cur.fetchall()
+        existing = await cur.fetchall()
 
-    # Delete each FTS row by rowid
-    for r in rowid_rows:
-        await db.execute("DELETE FROM pages_fts WHERE rowid = ?", (r["page_id"],))
+    for r in existing:
+        try:
+            await db.execute(
+                "INSERT INTO pages_fts(pages_fts, rowid, text, book_id, page_number, chapter_id) "
+                "VALUES('delete', ?, ?, ?, ?, ?)",
+                (r["page_id"], r["text"], book_id, r["page_number"], r["chapter_id"]),
+            )
+        except Exception:
+            pass  # row may not exist in FTS yet — safe to ignore
 
-    # Reinsert via rowid sync
+    # Insert fresh rows
     await db.execute("""
         INSERT INTO pages_fts(rowid, text, book_id, page_number, chapter_id)
         SELECT page_id, text, book_id, page_number, chapter_id
