@@ -39,9 +39,10 @@ The defaults in `.env.example` work out of the box for local use. Edit only if y
 ### 4 — Start the server
 
 ```bash
-source .venv/bin/activate          # if not already active
-uvicorn app.main:app --reload --port 8000
+.venv/bin/uvicorn app.main:app --reload --port 8000
 ```
+
+> Always invoke uvicorn via `.venv/bin/uvicorn` (not a bare `uvicorn` command). Using the bare command risks picking up a system-level uvicorn that spawns worker processes with the wrong Python interpreter, causing `ModuleNotFoundError` on startup.
 
 The server is ready when you see:
 
@@ -100,8 +101,7 @@ curl "http://localhost:8000/books/abc123/export?fmt=pdf"  -o questions.pdf
 
 ```bash
 cd book-knowledge-service
-source .venv/bin/activate
-pytest tests/ -v --cov=app --cov-report=term-missing
+.venv/bin/pytest tests/ -v --cov=app --cov-report=term-missing
 ```
 
 ---
