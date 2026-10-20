@@ -4,6 +4,108 @@ A modular FastAPI microservice for PDF textbook ingestion, full-text indexing, p
 
 ---
 
+## Run Locally
+
+All commands below assume you are inside the repo root (`quantum-computing/`).
+
+### 1 — Create the virtual environment (first time only)
+
+```bash
+cd book-knowledge-service
+python3.13 -m venv .venv
+```
+
+> The project venv uses **Python 3.13**. If `python3.13` is not on your PATH, substitute the full path (e.g. `/opt/homebrew/opt/python@3.13/bin/python3.13`).
+
+### 2 — Install dependencies (first time only)
+
+```bash
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 3 — Create your `.env` file (first time only)
+
+```bash
+cp .env.example .env
+```
+
+The defaults in `.env.example` work out of the box for local use. Edit only if you need to:
+- point `STORAGE_DIR` / `DATABASE_PATH` at a different location
+- set a custom `TESSERACT_CMD` if `tesseract` is not on your PATH
+- add an `API_SECRET_KEY` for auth
+
+### 4 — Start the server
+
+```bash
+source .venv/bin/activate          # if not already active
+uvicorn app.main:app --reload --port 8000
+```
+
+The server is ready when you see:
+
+```
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+```
+
+### 5 — Open in browser
+
+| What | URL |
+|------|-----|
+| Interactive API docs (Swagger UI) | http://localhost:8000/docs |
+| Alternative docs (ReDoc) | http://localhost:8000/redoc |
+| HTML page viewer | http://localhost:8000/viewer/{book_id}?page=1 |
+
+---
+
+## Upload and Work with a Book
+
+```bash
+# 1. Upload a PDF
+curl -X POST http://localhost:8000/books \
+     -F "file=@../misc/hcv-1.pdf" | jq .
+# → returns { "book_id": "abc123...", ... }
+
+# 2. Start indexing (returns a job_id)
+curl -X POST http://localhost:8000/books/abc123/index | jq .
+# → returns { "job_id": "xyz..." }
+
+# 3. Poll indexing progress
+curl http://localhost:8000/jobs/xyz | jq .
+# → { "status": "running"|"done"|"failed", "progress": 0.0–1.0 }
+
+# 4. List detected chapters
+curl http://localhost:8000/books/abc123/chapters | jq .
+
+# 5. Extract questions from a chapter
+curl -X POST http://localhost:8000/books/abc123/chapters/1/extract | jq .
+
+# 6. Retrieve extracted questions
+curl "http://localhost:8000/books/abc123/chapters/1/questions" | jq .
+
+# 7. Full-text search
+curl "http://localhost:8000/books/abc123/search?q=Newton" | jq .
+
+# 8. Export questions
+curl "http://localhost:8000/books/abc123/export?fmt=json" -o questions.json
+curl "http://localhost:8000/books/abc123/export?fmt=csv"  -o questions.csv
+curl "http://localhost:8000/books/abc123/export?fmt=html" -o questions.html
+curl "http://localhost:8000/books/abc123/export?fmt=pdf"  -o questions.pdf
+```
+
+---
+
+## Run Tests
+
+```bash
+cd book-knowledge-service
+source .venv/bin/activate
+pytest tests/ -v --cov=app --cov-report=term-missing
+```
+
+---
+
 ## Features
 
 | Capability | Detail |
@@ -15,51 +117,6 @@ A modular FastAPI microservice for PDF textbook ingestion, full-text indexing, p
 | Question extraction | Examples, Worked Out Examples, Short Answer, Objective I/II, Exercises |
 | Export | JSON · CSV · HTML · PDF (ReportLab) with source page references |
 | Background jobs | Async in-process task tracking; swap in Celery+Redis for production |
-
----
-
-## Quick Start
-
-```bash
-cd book-knowledge-service
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env         # edit if needed
-uvicorn app.main:app --reload --port 8000
-```
-
-Open:
-- **API docs:** http://localhost:8000/docs
-- **Viewer:** http://localhost:8000/viewer/{book_id}?page=1
-
----
-
-## Upload and Index a Book
-
-```bash
-# 1. Upload
-curl -X POST http://localhost:8000/books \
-     -F "file=@misc/hcv-1.pdf" | jq .
-
-# 2. Start indexing (returns job_id)
-curl -X POST http://localhost:8000/books/{book_id}/index | jq .
-
-# 3. Poll the job
-curl http://localhost:8000/jobs/{job_id} | jq .
-
-# 4. List chapters
-curl http://localhost:8000/books/{book_id}/chapters | jq .
-
-# 5. Extract questions from a chapter
-curl -X POST http://localhost:8000/books/{book_id}/chapters/{chapter_id}/extract | jq .
-
-# 6. Get questions
-curl "http://localhost:8000/books/{book_id}/chapters/{chapter_id}/questions" | jq .
-
-# 7. Export
-curl "http://localhost:8000/books/{book_id}/export?fmt=json" -o questions.json
-curl "http://localhost:8000/books/{book_id}/export?fmt=html" -o questions.html
-```
 
 ---
 
@@ -82,14 +139,6 @@ curl "http://localhost:8000/books/{book_id}/export?fmt=html" -o questions.html
 | GET | `/viewer/{book_id}?page=n` | HTML page viewer |
 
 Full interactive docs at `/docs` (Swagger UI) and `/redoc`.
-
----
-
-## Run Tests
-
-```bash
-pytest tests/ -v --cov=app --cov-report=term-missing
-```
 
 ---
 
@@ -135,7 +184,8 @@ book-knowledge-service/
 ├── Dockerfile
 ├── pytest.ini
 ├── requirements.txt
-└── .env.example
+├── .env.example
+└── .env                      (created from .env.example — git-ignored)
 ```
 
 ---
