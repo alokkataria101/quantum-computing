@@ -4,6 +4,50 @@ A modular FastAPI microservice for PDF textbook ingestion, full-text indexing, p
 
 ---
 
+## Start Afresh (reset everything)
+
+Use this whenever the database is corrupted or you want a clean slate. The uploaded PDF in `storage/books/` is also wiped so you will need to re-upload.
+
+```bash
+cd /private/tmp/qp/quantum-computing/book-knowledge-service   # adjust path to your clone
+
+# 1. Pull latest fixes
+git pull
+
+# 2. Stop the server (Ctrl+C in the uvicorn terminal)
+
+# 3. Wipe database and all stored files
+rm -f storage/books.db
+rm -rf storage/books storage/indexes storage/exports
+
+# 4. Recreate empty storage folders
+mkdir -p storage/books storage/indexes storage/exports
+
+# 5. Ensure OCR is disabled (tesseract not required)
+cp .env.example .env          # OCR_ENABLED=false is the default
+
+# 6. Start the server
+.venv/bin/uvicorn app.main:app --reload --port 8000
+```
+
+The server is ready when you see `Application startup complete`.
+
+Then re-upload and index:
+
+```bash
+# Upload
+curl -X POST http://localhost:8000/books \
+     -F "file=@../misc/hcv-1.pdf" | jq '.book_id'
+
+# Index (replace <BOOK_ID> with the value above)
+curl -X POST http://localhost:8000/books/<BOOK_ID>/index | jq '.job_id'
+
+# Poll until "status": "done"  (< 30 seconds with OCR off)
+curl http://localhost:8000/jobs/<JOB_ID> | jq '.status, .progress'
+```
+
+---
+
 ## Run Locally
 
 All commands below assume you are inside the repo root (`quantum-computing/`).
