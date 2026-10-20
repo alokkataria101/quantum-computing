@@ -11,7 +11,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 try:
-    import fitz  # PyMuPDF
+    import pymupdf as fitz  # PyMuPDF 2.x (fitz alias kept for internal use)
     FITZ_AVAILABLE = True
 except ImportError:
     FITZ_AVAILABLE = False
