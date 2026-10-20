@@ -37,7 +37,7 @@ Then re-upload and index:
 ```bash
 # Upload
 curl -X POST http://localhost:8000/books \
-     -F "file=@../misc/hcv-1.pdf" | jq '.book_id'
+     -F "file=@../misc/book1.pdf" | jq '.book_id'
 
 # Index (replace <BOOK_ID> with the value above)
 curl -X POST http://localhost:8000/books/<BOOK_ID>/index | jq '.job_id'
@@ -114,14 +114,14 @@ Each step builds on the previous one. Replace `<BOOK_ID>`, `<JOB_ID>`, and `<CH_
 
 ```bash
 curl -X POST http://localhost:8000/books \
-     -F "file=@../misc/hcv-1.pdf" | jq .
+     -F "file=@../misc/book1.pdf" | jq .
 ```
 
 Expected response:
 ```json
 {
   "book_id": "<BOOK_ID>",
-  "title": "hcv-1",
+  "title": "book1",
   "status": "uploaded",
   "page_count": null
 }

@@ -63,7 +63,7 @@ The full walkthrough is in [`book-knowledge-service/README.md`](book-knowledge-s
 
 ```bash
 curl -X POST http://localhost:8000/books \
-     -F "file=@misc/hcv-1.pdf" | jq .
+     -F "file=@misc/book1.pdf" | jq .
 # → note the "book_id"
 ```
 
