@@ -113,9 +113,9 @@ async def viewer(
     book = _row_to_book(brow)
 
     return templates.TemplateResponse(
-        "viewer.html",
-        {
-            "request": request,
+        request=request,
+        name="viewer.html",
+        context={
             "book": book,
             "chapters": chapters,
             "current_page": page,

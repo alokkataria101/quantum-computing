@@ -69,14 +69,23 @@ async def rebuild_fts(book_id: str) -> None:
     """
     Repopulate the FTS5 virtual table for all pages of a book.
     Deletes existing FTS entries for this book first.
+
+    FTS5 virtual tables do not support WHERE on non-indexed columns directly.
+    We delete by rowid (= page_id) obtained from the pages table.
     """
     db = await get_db()
 
-    # FTS5 content table: we need rowids from pages table
-    await db.execute(
-        "DELETE FROM pages_fts WHERE book_id = ?", (book_id,)
-    )
-    # Reinsert via content sync
+    # Collect rowids belonging to this book from the real pages table
+    async with db.execute(
+        "SELECT page_id FROM pages WHERE book_id = ?", (book_id,)
+    ) as cur:
+        rowid_rows = await cur.fetchall()
+
+    # Delete each FTS row by rowid
+    for r in rowid_rows:
+        await db.execute("DELETE FROM pages_fts WHERE rowid = ?", (r["page_id"],))
+
+    # Reinsert via rowid sync
     await db.execute("""
         INSERT INTO pages_fts(rowid, text, book_id, page_number, chapter_id)
         SELECT page_id, text, book_id, page_number, chapter_id
