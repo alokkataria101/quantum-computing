@@ -60,39 +60,145 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 
 ---
 
-## Upload and Work with a Book
+## End-to-End Walkthrough
+
+Each step builds on the previous one. Replace `<BOOK_ID>`, `<JOB_ID>`, and `<CH_ID>` with the IDs returned by the API.
+
+---
+
+### Step 1 — Upload a PDF
 
 ```bash
-# 1. Upload a PDF
 curl -X POST http://localhost:8000/books \
      -F "file=@../misc/hcv-1.pdf" | jq .
-# → returns { "book_id": "abc123...", ... }
+```
 
-# 2. Start indexing (returns a job_id)
-curl -X POST http://localhost:8000/books/abc123/index | jq .
-# → returns { "job_id": "xyz..." }
+Expected response:
+```json
+{
+  "book_id": "<BOOK_ID>",
+  "title": "hcv-1",
+  "status": "uploaded",
+  "page_count": null
+}
+```
 
-# 3. Poll indexing progress
-curl http://localhost:8000/jobs/xyz | jq .
-# → { "status": "running"|"done"|"failed", "progress": 0.0–1.0 }
+> **Re-uploading the same file** returns HTTP 409 (deduplication by SHA-256). Delete `storage/books.db` and `storage/books/` to reset.
 
-# 4. List detected chapters
-curl http://localhost:8000/books/abc123/chapters | jq .
+---
 
-# 5. Extract questions from a chapter
-curl -X POST http://localhost:8000/books/abc123/chapters/1/extract | jq .
+### Step 2 — List all registered books (GET)
 
-# 6. Retrieve extracted questions
-curl "http://localhost:8000/books/abc123/chapters/1/questions" | jq .
+```bash
+curl http://localhost:8000/books | jq .
+```
 
-# 7. Full-text search
-curl "http://localhost:8000/books/abc123/search?q=Newton" | jq .
+---
 
-# 8. Export questions
-curl "http://localhost:8000/books/abc123/export?fmt=json" -o questions.json
-curl "http://localhost:8000/books/abc123/export?fmt=csv"  -o questions.csv
-curl "http://localhost:8000/books/abc123/export?fmt=html" -o questions.html
-curl "http://localhost:8000/books/abc123/export?fmt=pdf"  -o questions.pdf
+### Step 3 — Get metadata for one book (GET)
+
+```bash
+curl http://localhost:8000/books/<BOOK_ID> | jq .
+```
+
+---
+
+### Step 4 — Start indexing (POST)
+
+```bash
+curl -X POST http://localhost:8000/books/<BOOK_ID>/index | jq .
+```
+
+Expected response:
+```json
+{ "job_id": "<JOB_ID>", "status": "running" }
+```
+
+---
+
+### Step 5 — Poll the indexing job (GET)
+
+```bash
+curl http://localhost:8000/jobs/<JOB_ID> | jq .
+```
+
+Expected response once complete:
+```json
+{ "job_id": "<JOB_ID>", "status": "done", "progress": 1.0 }
+```
+
+Keep polling until `"status"` is `"done"` or `"failed"`.
+
+---
+
+### Step 6 — List detected chapters (GET)
+
+```bash
+curl http://localhost:8000/books/<BOOK_ID>/chapters | jq .
+```
+
+Note the `"id"` field of the chapter you want — that is `<CH_ID>`.
+
+---
+
+### Step 7 — Read a specific page (GET)
+
+```bash
+# Extracted text for page 5
+curl http://localhost:8000/books/<BOOK_ID>/pages/5 | jq .
+
+# Render page 5 as PNG (save to file)
+curl http://localhost:8000/books/<BOOK_ID>/pages/5/render -o page5.png
+open page5.png
+```
+
+---
+
+### Step 8 — Open the HTML viewer in browser
+
+```
+http://localhost:8000/viewer/<BOOK_ID>?page=1
+```
+
+Use the Previous / Next buttons or the chapter sidebar to navigate.
+
+---
+
+### Step 9 — Full-text search (GET)
+
+```bash
+curl "http://localhost:8000/books/<BOOK_ID>/search?q=Newton" | jq .
+```
+
+---
+
+### Step 10 — Extract questions from a chapter (POST)
+
+```bash
+curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/extract | jq .
+# → returns { "job_id": "<JOB_ID>" }
+
+# Poll until done
+curl http://localhost:8000/jobs/<JOB_ID> | jq .
+```
+
+---
+
+### Step 11 — Retrieve extracted questions (GET)
+
+```bash
+curl "http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/questions" | jq .
+```
+
+---
+
+### Step 12 — Export questions (GET)
+
+```bash
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=json" -o questions.json
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=csv"  -o questions.csv
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=html" -o questions.html
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf"  -o questions.pdf
 ```
 
 ---
