@@ -1,0 +1,20 @@
+services:
+  stock-analyzer:
+    build:
+      context: .
+    container_name: quantum-stock-analyzer
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - streamlit
+      - run
+      - app.py
+      - --server.address
+      - 0.0.0.0
+      - --server.port
+      - "8501"
+      - --server.headless
+      - "true"
