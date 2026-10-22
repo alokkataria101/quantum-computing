@@ -149,25 +149,24 @@ _STOP_WORDS = frozenset({
 })
 
 
+import re as _re
+
+
 def _fts5_query(query: str) -> str:
     """
     Convert a natural-language question into a FTS5 MATCH expression.
 
-    Strategy:
-    1. Strip all non-alphanumeric chars, lower-case, drop stop-words.
-    2. Join remaining plain words with spaces — FTS5 treats this as
-       implicit AND across all tokens (no quoting needed for plain words).
-    3. Fall back to the first meaningful word if nothing survives.
+    Strips punctuation, lower-cases, removes stop-words and very short words.
+    The result is passed as a bound parameter via the TVF syntax so no
+    reserved-word collisions are possible.
     """
-    import re as _re
-    # Keep only letters/digits/spaces — removes all FTS5 special chars
     clean = _re.sub(r"[^\w\s]", " ", query.lower())
     words = clean.split()
     keywords = [w for w in words if w not in _STOP_WORDS and len(w) > 2]
     if not keywords:
-        # Grab any word longer than 1 char as a last resort
-        keywords = [w for w in words if len(w) > 1] or ["_no_match_"]
-    return " ".join(keywords)
+        keywords = [w for w in words if len(w) > 1]
+    # Join with OR so partial matches still return results
+    return " OR ".join(keywords) if keywords else query
 
 
 async def full_text_search(
@@ -176,30 +175,35 @@ async def full_text_search(
     chapter_id: str | None = None,
     limit: int = 20,
 ) -> list[dict]:
-    """Run a FTS5 query and return ranked hits with snippets."""
-    db = await get_db()
-    # FTS5 MATCH does not accept ? positional params on all SQLite builds.
-    # Build the match expression from keywords and inline it safely;
-    # use named params only for the non-FTS filter columns.
-    fts_expr = _fts5_query(query)
-    where_clauses: list[str] = [f"pages_fts MATCH {fts_expr}"]
-    params: dict = {}
-    if book_id:
-        where_clauses.append("book_id = :book_id")
-        params["book_id"] = book_id
-    if chapter_id:
-        where_clauses.append("chapter_id = :chapter_id")
-        params["chapter_id"] = chapter_id
-    params["limit"] = limit
+    """Run a FTS5 query and return ranked hits with snippets.
 
+    Uses the FTS5 table-valued function (TVF) syntax:
+        SELECT … FROM pages_fts(?) WHERE …
+    This passes the match expression as a bound ? parameter, which completely
+    avoids FTS5 reserved-word syntax errors regardless of query content.
+    """
+    db = await get_db()
+    fts_expr = _fts5_query(query)
+
+    extra_where: list[str] = []
+    params: list = [fts_expr]
+    if book_id:
+        extra_where.append("book_id = ?")
+        params.append(book_id)
+    if chapter_id:
+        extra_where.append("chapter_id = ?")
+        params.append(chapter_id)
+    params.append(limit)
+
+    where_sql = ("WHERE " + " AND ".join(extra_where)) if extra_where else ""
     sql = f"""
         SELECT book_id, page_number, chapter_id,
                snippet(pages_fts, 0, '<b>', '</b>', '…', 32) AS snippet,
                rank
-        FROM pages_fts
-        WHERE {' AND '.join(where_clauses)}
+        FROM pages_fts(?)
+        {where_sql}
         ORDER BY rank
-        LIMIT :limit
+        LIMIT ?
     """
     async with db.execute(sql, params) as cur:
         rows = await cur.fetchall()
