@@ -12,3 +12,8 @@ output/
 .DS_Store
 
 *.log
+
+# Runtime-generated cache and state files — per-user, do not commit
+data/hist_cache/
+data/qamo_states/
+*.parquet
