@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from .config import settings
 from .database import init_db, close_db, get_db
-from .routers import books, index, questions, jobs_export
+from .routers import books, index, questions, jobs_export, ai
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -51,6 +51,7 @@ app.include_router(books.router)
 app.include_router(index.router)
 app.include_router(questions.router)
 app.include_router(jobs_export.router)
+app.include_router(ai.router)
 
 
 # ── HTML page viewer ──────────────────────────────────────────────────────────

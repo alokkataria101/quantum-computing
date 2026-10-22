@@ -347,6 +347,55 @@ curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=wave&count=
 
 ---
 
+### Step 18 — Ask a question about the book (AI / watsonx RAG)
+
+Requires `WATSONX_API_KEY` and `WATSONX_PROJECT_ID` set in `../../.env.secrets`.
+
+```bash
+# Ask anything — watsonx finds the relevant pages and answers from the book text
+curl -X POST http://localhost:8000/books/<BOOK_ID>/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Explain Newton'\''s third law and give an example", "max_pages": 5}' \
+  | jq '{answer: .answer, pages: .source_pages}'
+
+# Restrict to a specific chapter
+curl -X POST http://localhost:8000/books/<BOOK_ID>/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is simple harmonic motion?", "chapter_id": "<CH_ID>", "max_pages": 5}' \
+  | jq '.answer'
+```
+
+---
+
+### Step 19 — Generate AI questions with proper notation (watsonx)
+
+```bash
+# 5 mixed questions (MCQ + short + numerical) from a chapter, medium difficulty
+curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/generate-questions \
+  -H "Content-Type: application/json" \
+  -d '{"chapter_id": "<CH_ID>", "question_type": "mixed", "count": 5, "difficulty": "medium"}' \
+  | jq '.questions[] | {number: .number, type: .type, question: .question, options: .options, answer: .answer}'
+
+# 8 MCQ questions, hard difficulty
+curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/generate-questions \
+  -H "Content-Type: application/json" \
+  -d '{"chapter_id": "<CH_ID>", "question_type": "mcq", "count": 8, "difficulty": "hard"}' \
+  | jq '.questions[] | "\(.number). \(.question)\n  Options: \(.options)\n  Answer: \(.answer)"'
+
+# 5 numerical problems, medium difficulty
+curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/generate-questions \
+  -H "Content-Type: application/json" \
+  -d '{"chapter_id": "<CH_ID>", "question_type": "numerical", "count": 5, "difficulty": "medium"}' \
+  | jq '.questions[].question'
+```
+
+Available `question_type`: `mcq` · `short` · `numerical` · `mixed`
+Available `difficulty`: `easy` · `medium` · `hard`
+
+> Questions are generated with proper scientific notation: Greek letters (α β γ θ ω λ), superscripts (v², m/s²), subscripts (v₀, F_net), fractions, and vector notation (F⃗).
+
+---
+
 ## Run Tests
 
 ```bash
@@ -387,6 +436,8 @@ cd book-knowledge-service
 | GET | `/jobs/{job_id}` | Check job progress |
 | GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | Export questions |
 | GET | `/books/{book_id}/questions/generate?topic=...&count=N&question_type=...&random=true\|false` | Generate N questions on a topic |
+| POST | `/books/{book_id}/ask` | Ask a question — watsonx RAG answer grounded in book text |
+| POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | Generate AI questions with proper notation (MCQ / short / numerical) |
 | GET | `/viewer/{book_id}?page=n` | HTML page viewer |
 
 Full interactive docs at `/docs` (Swagger UI) and `/redoc`.

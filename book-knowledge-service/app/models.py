@@ -197,3 +197,53 @@ class ExportRequest(BaseModel):
     chapter_ids: Optional[list[str]] = None   # None = all chapters
     question_types: Optional[list[QuestionType]] = None
     include_solutions: bool = True
+
+
+# ── AI / watsonx ──────────────────────────────────────────────────────────────
+
+class AskRequest(BaseModel):
+    question: str = Field(..., min_length=5, description="Question to ask about the book")
+    chapter_id: Optional[str] = Field(None, description="Restrict search to this chapter")
+    max_pages: int = Field(5, ge=1, le=20, description="Max pages to include as context")
+
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str
+    source_pages: list[int]
+    chapter_title: Optional[str] = None
+    ai_enabled: bool
+
+
+class GenerateQuestionsRequest(BaseModel):
+    chapter_id: str = Field(..., description="Chapter to generate questions from")
+    question_type: str = Field(
+        "mixed",
+        description=(
+            "Type of questions: 'mcq' (multiple choice), 'short' (short answer), "
+            "'numerical' (numerical problems), 'mixed' (all types)"
+        ),
+    )
+    count: int = Field(5, ge=1, le=20, description="Number of questions to generate")
+    difficulty: str = Field(
+        "medium",
+        description="Difficulty level: 'easy', 'medium', 'hard'",
+    )
+
+
+class GeneratedQuestion(BaseModel):
+    number: int
+    type: str                          # mcq | short | numerical
+    question: str                      # full question text with proper notation
+    options: Optional[list[str]] = None  # A, B, C, D for MCQ
+    answer: Optional[str] = None
+    hint: Optional[str] = None
+
+
+class GenerateQuestionsResponse(BaseModel):
+    chapter_title: str
+    chapter_number: int
+    questions: list[GeneratedQuestion]
+    total: int
+    ai_enabled: bool
+    note: Optional[str] = None         # shown when AI is disabled
