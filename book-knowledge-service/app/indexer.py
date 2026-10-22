@@ -151,22 +151,23 @@ _STOP_WORDS = frozenset({
 
 def _fts5_query(query: str) -> str:
     """
-    Convert a natural-language question into a FTS5 query string.
+    Convert a natural-language question into a FTS5 MATCH expression.
 
     Strategy:
-    1. Strip punctuation, lower-case, drop stop-words.
-    2. Join remaining words with AND logic (each word quoted to avoid FTS5
-       special-char errors).
-    3. Fall back to a single broad quoted phrase if no keywords survive.
+    1. Strip all non-alphanumeric chars, lower-case, drop stop-words.
+    2. Join remaining plain words with spaces — FTS5 treats this as
+       implicit AND across all tokens (no quoting needed for plain words).
+    3. Fall back to the first meaningful word if nothing survives.
     """
     import re as _re
-    words = _re.sub(r"[^\w\s]", " ", query.lower()).split()
-    keywords = [w for w in words if w not in _STOP_WORDS and len(w) > 1]
+    # Keep only letters/digits/spaces — removes all FTS5 special chars
+    clean = _re.sub(r"[^\w\s]", " ", query.lower())
+    words = clean.split()
+    keywords = [w for w in words if w not in _STOP_WORDS and len(w) > 2]
     if not keywords:
-        # Last resort: treat the whole query as a phrase
-        return '"{}"'.format(query.replace('"', '""'))
-    # Quote each keyword so FTS5 special chars (-, *, etc.) are treated literally
-    return " ".join('"{}"'.format(kw.replace('"', '""')) for kw in keywords)
+        # Grab any word longer than 1 char as a last resort
+        keywords = [w for w in words if len(w) > 1] or ["_no_match_"]
+    return " ".join(keywords)
 
 
 async def full_text_search(
