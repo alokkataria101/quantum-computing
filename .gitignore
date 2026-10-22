@@ -10,3 +10,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+
+# Shared secrets — never commit
+.env.secrets
+.env
+*.env
