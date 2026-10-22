@@ -1,14 +1,22 @@
 """
 config.py
 
-Central configuration for the
-Quantum Portfolio Intelligence Platform (QPIP).
-
-Version : 11.0.1
+Central configuration for the Stock Analyzer.
 """
 
 import os
 from pathlib import Path
+
+# Load shared secrets from repo root (.env.secrets), then project .env as override.
+# Both files are git-ignored — safe to have real credentials there.
+try:
+    from dotenv import load_dotenv
+    _here = Path(__file__).resolve().parent
+    _repo_root = _here.parent          # quantum-computing/
+    load_dotenv(_repo_root / ".env.secrets", override=False)
+    load_dotenv(_here / ".env", override=True)
+except ImportError:
+    pass  # python-dotenv not installed — fall back to environment variables only
 
 # ==========================================================
 # Application Version & Branding
