@@ -22,7 +22,7 @@ import re
 
 from fastapi import APIRouter, HTTPException
 
-from ..ai_client import get_ai_client
+from ..ai_client import get_ai_client, RateLimitError
 from ..database import get_db
 from ..models import (
     AskRequest, AskResponse,
@@ -158,7 +158,10 @@ STUDENT QUESTION: {req.question}
 
 ANSWER (clear, concise, well-formatted):"""
 
-    answer = ai.generate(prompt)
+    try:
+        answer = ai.generate(prompt)
+    except RateLimitError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     if not answer:
         raise HTTPException(status_code=500, detail="AI generation failed.")
 
@@ -270,7 +273,10 @@ CHAPTER TEXT:
 
 JSON OUTPUT:"""
 
-    raw = ai.generate(prompt)
+    try:
+        raw = ai.generate(prompt)
+    except RateLimitError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     if not raw:
         raise HTTPException(status_code=500, detail="AI generation failed.")
 

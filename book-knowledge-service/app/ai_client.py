@@ -80,8 +80,18 @@ class AIClient:
         try:
             return self._model.generate_text(prompt=prompt).strip()
         except Exception as exc:
+            msg = str(exc)
             logger.error("[AI] Generation error: %s", exc)
+            if "429" in msg or "consumption_limit_reached" in msg or "Too Many Requests" in msg:
+                raise RateLimitError(
+                    "watsonx rate limit reached — too many concurrent requests. "
+                    "Please wait a moment and try again."
+                ) from exc
             return None
+
+
+class RateLimitError(Exception):
+    """Raised when watsonx returns HTTP 429 Too Many Requests."""
 
 
 # Singleton — one connection shared across all requests
