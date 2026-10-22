@@ -1,67 +1,82 @@
 # Book Knowledge Service
 
-A modular FastAPI microservice for PDF textbook ingestion, full-text indexing, page-by-page viewing, chapter detection, and question/example extraction.
+A FastAPI microservice for PDF textbook ingestion, full-text search, page viewing, chapter detection, question extraction, and AI-powered Q&A using IBM watsonx.
 
 ---
 
-## Start Afresh (reset everything)
+## Table of Contents
 
-Use this whenever the database is corrupted or you want a clean slate. The uploaded PDF in `storage/books/` is also wiped so you will need to re-upload.
+1. [Prerequisites](#prerequisites)
+2. [Get the code — choose your branch](#get-the-code)
+3. [Set up the virtual environment](#set-up-the-virtual-environment)
+4. [Install dependencies](#install-dependencies)
+5. [Configure the service (.env)](#configure-the-service)
+6. [Configure watsonx AI (optional)](#configure-watsonx-ai-optional)
+7. [Start the server](#start-the-server)
+8. [Upload and index a book](#upload-and-index-a-book)
+9. [Browse the book](#browse-the-book)
+10. [Extract questions (pattern-based)](#extract-questions-pattern-based)
+11. [Generate questions with AI (watsonx)](#generate-questions-with-ai)
+12. [Ask the book a question (watsonx RAG)](#ask-the-book-a-question)
+13. [Export everything](#export-everything)
+14. [Start afresh (reset)](#start-afresh-reset)
+15. [Run tests](#run-tests)
+16. [API reference](#api-reference)
+17. [Project structure](#project-structure)
+18. [Troubleshooting](#troubleshooting)
+
+---
+
+## Prerequisites
+
+- **Python 3.13** — install via [python.org](https://python.org) or Homebrew (`brew install python@3.13`)
+- **git**
+- **jq** — for pretty-printing JSON in terminal (`brew install jq`)
+- **Tesseract** — *optional*, only needed if you want OCR on scanned pages (`brew install tesseract`)
+- **IBM watsonx.ai account** — *optional*, only needed for AI endpoints (Steps 11–12)
+
+Check Python version:
 
 ```bash
-cd /private/tmp/qp/quantum-computing/book-knowledge-service   # adjust path to your clone
-
-# 1. Pull latest fixes
-git pull
-
-# 2. Stop the server (Ctrl+C in the uvicorn terminal)
-
-# 3. Wipe database and all stored files
-rm -f storage/books.db
-rm -rf storage/books storage/indexes storage/exports
-
-# 4. Recreate empty storage folders
-mkdir -p storage/books storage/indexes storage/exports
-
-# 5. Ensure OCR is disabled (tesseract not required)
-cp .env.example .env          # OCR_ENABLED=false is the default
-
-# 6. Start the server
-.venv/bin/uvicorn app.main:app --reload --port 8000
-```
-
-The server is ready when you see `Application startup complete`.
-
-Then re-upload and index:
-
-```bash
-# Upload
-curl -X POST http://localhost:8000/books \
-     -F "file=@../misc/book1.pdf" | jq '.book_id'
-
-# Index (replace <BOOK_ID> with the value above)
-curl -X POST http://localhost:8000/books/<BOOK_ID>/index | jq '.job_id'
-
-# Poll until "status": "done"  (< 30 seconds with OCR off)
-curl http://localhost:8000/jobs/<JOB_ID> | jq '.status, .progress'
+python3.13 --version   # should print Python 3.13.x
 ```
 
 ---
 
-## Run Locally
+## Get the code
 
-All commands below assume you are inside the repo root (`quantum-computing/`).
-
-### 1 — Create the virtual environment (first time only)
+### Option A — main branch (stable, no AI endpoints)
 
 ```bash
-cd book-knowledge-service
+git clone https://github.com/alokkataria101/quantum-computing.git
+cd quantum-computing/book-knowledge-service
+```
+
+### Option B — dev1 branch (includes watsonx AI endpoints)
+
+```bash
+git clone https://github.com/alokkataria101/quantum-computing.git
+cd quantum-computing/book-knowledge-service
+git checkout dev1
+```
+
+> **Which branch?** Use `main` if you just want to upload, index, and extract questions without AI. Use `dev1` if you have IBM watsonx credentials and want AI-powered Q&A and question generation.
+
+---
+
+## Set up the virtual environment
+
+Run this once, inside the `book-knowledge-service/` directory:
+
+```bash
 python3.13 -m venv .venv
 ```
 
-> The project venv uses **Python 3.13**. If `python3.13` is not on your PATH, substitute the full path (e.g. `/opt/homebrew/opt/python@3.13/bin/python3.13`).
+> If `python3.13` is not found, use the full path: `/opt/homebrew/opt/python@3.13/bin/python3.13 -m venv .venv`
 
-### 2 — Install dependencies (first time only)
+---
+
+## Install dependencies
 
 ```bash
 source .venv/bin/activate
@@ -69,46 +84,108 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3 — Create your `.env` file (first time only)
+Expected output ends with `Successfully installed ...`. This takes 1–3 minutes on first run.
+
+---
+
+## Configure the service
 
 ```bash
 cp .env.example .env
 ```
 
-The defaults in `.env.example` work out of the box for local use. Edit only if you need to:
-- point `STORAGE_DIR` / `DATABASE_PATH` at a different location
-- set a custom `TESSERACT_CMD` if `tesseract` is not on your PATH
-- add an `API_SECRET_KEY` for auth
+The defaults work out of the box. Open `.env` only if you need to change:
 
-### 4 — Start the server
+```bash
+# .env — edit these if needed, otherwise leave as-is
+STORAGE_DIR=./storage          # where PDFs and DB are stored
+DATABASE_PATH=./storage/books.db
+MAX_UPLOAD_BYTES=104857600     # 100 MB upload limit
+OCR_ENABLED=false              # set true only if tesseract is installed
+TESSERACT_CMD=tesseract        # path to tesseract binary if not on PATH
+RENDER_DPI=150                 # page render resolution
+LOG_LEVEL=INFO
+API_SECRET_KEY=                # leave empty for local use
+```
+
+> **OCR:** Leave `OCR_ENABLED=false` unless you have Tesseract installed (`brew install tesseract`). Without OCR the service still works — it uses PyMuPDF's built-in text layer, which is fast (< 30 s for 500 pages).
+
+---
+
+## Configure watsonx AI (optional)
+
+> **Skip this section entirely if you do not have IBM watsonx credentials.** The service works fully without AI — only Steps 11 and 12 below will return HTTP 503.
+
+The AI credentials live in a **shared secrets file at the repo root** — never in git.
+
+### Step A — create `.env.secrets` at the repo root
+
+```bash
+cd ..                          # go up to quantum-computing/
+cp .env.secrets.example .env.secrets
+```
+
+### Step B — fill in your credentials
+
+Open `quantum-computing/.env.secrets` and fill in:
+
+```bash
+WATSONX_API_KEY=your-api-key-here
+WATSONX_PROJECT_ID=your-project-id-here
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+```
+
+Where to find these:
+- **API key:** [IBM Cloud → Manage → Access → API keys](https://cloud.ibm.com/iam/apikeys) → Create
+- **Project ID:** [watsonx.ai](https://dataplatform.cloud.ibm.com) → your project → Manage tab → Project ID
+- **URL:** use `https://us-south.ml.cloud.ibm.com` for US, `https://eu-de.ml.cloud.ibm.com` for EU
+
+### Step C — verify
+
+```bash
+cd book-knowledge-service
+grep -v '^#' ../.env.secrets | grep '=' | while IFS='=' read -r k v; do
+  [ -n "$v" ] && echo "$k: SET ✅" || echo "$k: EMPTY ❌"
+done
+```
+
+All three keys should show `SET ✅`.
+
+### Step D — go back to the service directory
+
+```bash
+cd book-knowledge-service
+```
+
+---
+
+## Start the server
 
 ```bash
 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
-> Always invoke uvicorn via `.venv/bin/uvicorn` (not a bare `uvicorn` command). Using the bare command risks picking up a system-level uvicorn that spawns worker processes with the wrong Python interpreter, causing `ModuleNotFoundError` on startup.
+> **Important:** always use `.venv/bin/uvicorn`, not bare `uvicorn`. Using the bare command causes the reload subprocess to pick up system Python (which has no packages installed) and crash with `ModuleNotFoundError`.
 
 The server is ready when you see:
 
 ```
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Application startup complete.
 ```
 
-### 5 — Open in browser
+Open in browser:
 
-| What | URL |
-|------|-----|
-| Interactive API docs (Swagger UI) | http://localhost:8000/docs |
-| Alternative docs (ReDoc) | http://localhost:8000/redoc |
-| HTML page viewer | http://localhost:8000/viewer/{book_id}?page=1 |
-
----
-
-## End-to-End Walkthrough
-
-Each step builds on the previous one. Replace `<BOOK_ID>`, `<JOB_ID>`, and `<CH_ID>` with the IDs returned by the API.
+| URL | What |
+|-----|------|
+| http://localhost:8000/docs | Swagger UI — interactive API docs |
+| http://localhost:8000/redoc | ReDoc — alternative docs |
 
 ---
+
+## Upload and index a book
+
+Replace `<BOOK_ID>` and `<JOB_ID>` with the values returned by each command.
 
 ### Step 1 — Upload a PDF
 
@@ -117,98 +194,87 @@ curl -X POST http://localhost:8000/books \
      -F "file=@../misc/book1.pdf" | jq .
 ```
 
-Expected response:
+Response:
 ```json
 {
-  "book_id": "<BOOK_ID>",
+  "book_id": "6051e137-...",
   "title": "book1",
-  "status": "uploaded",
-  "page_count": null
+  "status": "uploaded"
 }
 ```
 
-> **Re-uploading the same file** returns HTTP 409 (deduplication by SHA-256). Delete `storage/books.db` and `storage/books/` to reset.
+Note the `book_id`. Re-uploading the same file returns HTTP 409 (SHA-256 deduplication).
 
----
-
-### Step 2 — List all registered books (GET)
+### Step 2 — List all books
 
 ```bash
 curl http://localhost:8000/books | jq .
 ```
 
----
-
-### Step 3 — Get metadata for one book (GET)
+### Step 3 — Get book metadata
 
 ```bash
 curl http://localhost:8000/books/<BOOK_ID> | jq .
 ```
 
----
-
-### Step 4 — Start indexing (POST)
+### Step 4 — Start indexing
 
 ```bash
 curl -X POST http://localhost:8000/books/<BOOK_ID>/index | jq .
 ```
 
-Expected response:
+Response:
 ```json
-{ "job_id": "<JOB_ID>", "status": "running" }
+{ "job_id": "9869802c-...", "status": "pending" }
 ```
+
+Note the `job_id`.
+
+### Step 5 — Poll until done
+
+```bash
+curl http://localhost:8000/jobs/<JOB_ID> | jq '.status, .progress'
+```
+
+Keep running until `"status"` is `"done"`. With `OCR_ENABLED=false` this takes **< 30 seconds** for a 500-page book.
+
+### Step 6 — List chapters
+
+```bash
+curl http://localhost:8000/books/<BOOK_ID>/chapters \
+  | jq '.chapters[] | {number, title, chapter_id, page_start, page_end}'
+```
+
+Note the `chapter_id` of the chapter you want to work with — you'll need it for Steps 9–12.
 
 ---
 
-### Step 5 — Poll the indexing job (GET)
+## Browse the book
 
-```bash
-curl http://localhost:8000/jobs/<JOB_ID> | jq .
+### Step 7 — Open the HTML viewer
+
+Find `page_start` for your chapter from Step 6, then open in browser:
+
+```
+http://localhost:8000/viewer/<BOOK_ID>?page=<PAGE_START>
 ```
 
-Expected response once complete:
-```json
-{ "job_id": "<JOB_ID>", "status": "done", "progress": 1.0 }
-```
+Use Previous / Next buttons to page through. The chapter sidebar lets you jump directly.
 
-Keep polling until `"status"` is `"done"` or `"failed"`.
-
----
-
-### Step 6 — List detected chapters (GET)
+### Step 8 — Read a page as text
 
 ```bash
-curl http://localhost:8000/books/<BOOK_ID>/chapters | jq .
+curl http://localhost:8000/books/<BOOK_ID>/pages/5 | jq '.text'
 ```
 
-Note the `"id"` field of the chapter you want — that is `<CH_ID>`.
-
----
-
-### Step 7 — Read a specific page (GET)
+### Step 9 — Render a page as PNG
 
 ```bash
-# Extracted text for page 5
-curl http://localhost:8000/books/<BOOK_ID>/pages/5 | jq .
-
-# Render page 5 as PNG (save to file)
 curl http://localhost:8000/books/<BOOK_ID>/pages/5/render -o page5.png
 open page5.png
 ```
 
----
-
-### Step 8 — Open the HTML viewer in browser
-
-```
-http://localhost:8000/viewer/<BOOK_ID>?page=1
-```
-
-Use the Previous / Next buttons or the chapter sidebar to navigate.
-
----
-
-### Step 9 — Full-text search (GET)
+### Step 10 — Full-text search
 
 ```bash
 curl "http://localhost:8000/books/<BOOK_ID>/search?q=Newton" | jq .
@@ -216,187 +282,201 @@ curl "http://localhost:8000/books/<BOOK_ID>/search?q=Newton" | jq .
 
 ---
 
-### Step 10 — Extract questions from a chapter (POST)
+## Extract questions (pattern-based)
+
+These steps use regex pattern matching — no AI required.
+
+### Step 11 — Extract questions from one chapter
 
 ```bash
 curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/extract | jq .
-# → returns { "job_id": "<JOB_ID>" }
+# → returns { "job_id": "..." }
 
 # Poll until done
-curl http://localhost:8000/jobs/<JOB_ID> | jq .
+curl http://localhost:8000/jobs/<JOB_ID> | jq '.status'
 ```
 
----
-
-### Step 11 — Retrieve extracted questions (GET)
+### Step 12 — Retrieve extracted questions
 
 ```bash
+# All question types
 curl "http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/questions" | jq .
+
+# Filter by type: objective_1 | objective_2 | exercise | short_answer | worked_example | example
+curl "http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/questions?question_type=exercise" | jq .
 ```
 
----
-
-### Step 12 — Export questions (GET)
+### Step 13 — Bulk extract all chapters at once
 
 ```bash
-curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=json" -o questions.json
-curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=csv"  -o questions.csv
-curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=html" -o questions.html
-curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf"  -o questions.pdf
-```
-
----
-
-### Step 13 — Generate N questions on a topic (GET)
-
-```bash
-# 10 random Objective I questions from optics chapters
-curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=optics&count=10&question_type=objective_1&random=true" | jq .
-
-# 5 exercises from Newton's Laws, in page order
-curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=newton&count=5&question_type=exercise&random=false" | jq .
-
-# 8 short-answer questions from thermodynamics, randomly shuffled
-curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=thermodynamics&count=8&question_type=short_answer&random=true" | jq .
-```
-
-Available `question_type` values: `objective_1` · `objective_2` · `exercise` · `short_answer` · `worked_example` · `example`
-
-> **Prerequisite:** questions must have been extracted first (Steps 10–11). The `topic` matches against chapter titles — use `GET /books/<BOOK_ID>/chapters` to see exact titles.
-
----
-
-### Step 14 — Read a full chapter in the browser
-
-Open the viewer at the chapter's first page. Use Previous / Next to page through it:
-
-```
-http://localhost:8000/viewer/<BOOK_ID>?page=<PAGE_START>
-```
-
-To find `<PAGE_START>` for a chapter:
-
-```bash
-curl http://localhost:8000/books/<BOOK_ID>/chapters | jq '.chapters[] | {number, title, page_start, page_end}'
-```
-
-To render any page as a PNG image:
-
-```bash
-curl http://localhost:8000/books/<BOOK_ID>/pages/<PAGE_NUMBER>/render -o page.png
-open page.png
-```
-
----
-
-### Step 15 — Extract questions from ALL chapters at once (bulk extract)
-
-Run this loop to trigger extraction for every chapter in one go, then wait ~10 seconds for all jobs to finish:
-
-```bash
-for ch_id in $(curl -s http://localhost:8000/books/<BOOK_ID>/chapters | jq -r '.chapters[].chapter_id'); do
-  echo "Extracting $ch_id...";
-  curl -s -X POST http://localhost:8000/books/<BOOK_ID>/chapters/$ch_id/extract > /dev/null;
-  sleep 1;
+for ch_id in $(curl -s http://localhost:8000/books/<BOOK_ID>/chapters \
+               | jq -r '.chapters[].chapter_id'); do
+  echo "Extracting $ch_id..."
+  curl -s -X POST http://localhost:8000/books/<BOOK_ID>/chapters/$ch_id/extract > /dev/null
+  sleep 1
 done
-echo "Done — wait ~10 s then proceed to export."
+echo "All triggered — wait ~15 s then export."
 ```
 
----
-
-### Step 16 — Export the entire book's questions (all chapters, all types)
-
-After bulk extraction is complete:
+### Step 14 — Generate N questions on a topic (pattern-based)
 
 ```bash
-# HTML — open in browser, nicely formatted
-curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=html" -o all_questions.html
-open all_questions.html
-
-# JSON — machine-readable
-curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=json" -o all_questions.json
-
-# CSV — open in Excel / Numbers
-curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=csv" -o all_questions.csv
-
-# PDF — printable
-curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf" -o all_questions.pdf
-```
-
----
-
-### Step 17 — Get all exercises (or any type) from a specific topic
-
-Use `generate` with a high `count` and `random=false` to get everything in page order:
-
-```bash
-# All exercises from chapters matching "light" (e.g. optics)
-curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=light&count=100&question_type=exercise&random=false" \
-  | jq '.questions[].question_text'
-
-# All Objective I MCQs from chapters matching "motion"
-curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=motion&count=100&question_type=objective_1&random=false" \
+# 10 random Objective I MCQs from chapters matching "optics"
+curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=optics&count=10&question_type=objective_1&random=true" \
   | jq '.questions[] | {number: .question_number, text: .question_text}'
 
-# All short-answer questions from chapters matching "wave"
-curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=wave&count=100&question_type=short_answer&random=false" \
+# 20 exercises from wave motion, in page order
+curl "http://localhost:8000/books/<BOOK_ID>/questions/generate?topic=wave&count=20&question_type=exercise&random=false" \
   | jq '.questions[].question_text'
 ```
 
-> The `topic` keyword is matched against chapter **titles**. Run Step 6 (`GET /chapters`) first to see the exact titles available.
+> `topic` matches against chapter **titles** (case-insensitive substring). Run Step 6 to see exact titles.
 
----
-
-### Step 18 — Ask a question about the book (AI / watsonx RAG)
-
-Requires `WATSONX_API_KEY` and `WATSONX_PROJECT_ID` set in `../../.env.secrets`.
+### Step 15 — Export entire book (all chapters, all types)
 
 ```bash
-# Ask anything — watsonx finds the relevant pages and answers from the book text
-curl -X POST http://localhost:8000/books/<BOOK_ID>/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Explain Newton'\''s third law and give an example", "max_pages": 5}' \
-  | jq '{answer: .answer, pages: .source_pages}'
-
-# Restrict to a specific chapter
-curl -X POST http://localhost:8000/books/<BOOK_ID>/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is simple harmonic motion?", "chapter_id": "<CH_ID>", "max_pages": 5}' \
-  | jq '.answer'
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=html" -o all_questions.html && open all_questions.html
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=json" -o all_questions.json
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=csv"  -o all_questions.csv
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf"  -o all_questions.pdf
 ```
 
 ---
 
-### Step 19 — Generate AI questions with proper notation (watsonx)
+## Generate questions with AI
+
+> **Requires:** watsonx credentials configured (see [Configure watsonx AI](#configure-watsonx-ai-optional)) and **dev1 branch**.
+> Without credentials the endpoint returns HTTP 503 — the rest of the service is unaffected.
+
+### Step 16 — Generate AI questions from a chapter
 
 ```bash
-# 5 mixed questions (MCQ + short + numerical) from a chapter, medium difficulty
+# 5 mixed questions (MCQ + short-answer + numerical), medium difficulty
 curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/generate-questions \
   -H "Content-Type: application/json" \
-  -d '{"chapter_id": "<CH_ID>", "question_type": "mixed", "count": 5, "difficulty": "medium"}' \
-  | jq '.questions[] | {number: .number, type: .type, question: .question, options: .options, answer: .answer}'
+  -d '{
+    "chapter_id": "<CH_ID>",
+    "question_type": "mixed",
+    "count": 5,
+    "difficulty": "medium"
+  }' | jq '.questions[] | {
+    number: .number,
+    type:   .type,
+    q:      .question,
+    opts:   .options,
+    ans:    .answer
+  }'
+```
 
+```bash
 # 8 MCQ questions, hard difficulty
 curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/generate-questions \
   -H "Content-Type: application/json" \
-  -d '{"chapter_id": "<CH_ID>", "question_type": "mcq", "count": 8, "difficulty": "hard"}' \
-  | jq '.questions[] | "\(.number). \(.question)\n  Options: \(.options)\n  Answer: \(.answer)"'
+  -d '{"chapter_id":"<CH_ID>","question_type":"mcq","count":8,"difficulty":"hard"}' \
+  | jq '.questions[] | "\(.number). \(.question)\n  \(.options)\n  Answer: \(.answer)"'
+```
 
-# 5 numerical problems, medium difficulty
+```bash
+# 5 numerical problems, easy difficulty
 curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/generate-questions \
   -H "Content-Type: application/json" \
-  -d '{"chapter_id": "<CH_ID>", "question_type": "numerical", "count": 5, "difficulty": "medium"}' \
+  -d '{"chapter_id":"<CH_ID>","question_type":"numerical","count":5,"difficulty":"easy"}' \
   | jq '.questions[].question'
 ```
 
-Available `question_type`: `mcq` · `short` · `numerical` · `mixed`
-Available `difficulty`: `easy` · `medium` · `hard`
+**`question_type` options:**
 
-> Questions are generated with proper scientific notation: Greek letters (α β γ θ ω λ), superscripts (v², m/s²), subscripts (v₀, F_net), fractions, and vector notation (F⃗).
+| Value | Generates |
+|-------|-----------|
+| `mcq` | Multiple choice — 4 options (A)(B)(C)(D) with correct answer |
+| `short` | Short-answer questions (2–4 lines) |
+| `numerical` | Calculation problems with given data and numerical answer |
+| `mixed` | ~⅓ of each type above |
+
+**`difficulty` options:** `easy` · `medium` · `hard`
+
+> Questions include proper scientific notation: **α β γ θ ω λ μ π**, superscripts (**v² m/s²**), subscripts (**v₀ F_net m₁ m₂**), fractions (**½mv²**), vectors (**F⃗ v⃗**).
 
 ---
 
-## Run Tests
+## Ask the book a question
+
+> **Requires:** watsonx credentials and **dev1 branch**.
+
+### Step 17 — Ask anything about the book
+
+The service uses FTS5 to find the most relevant pages, then sends them to IBM watsonx Granite to answer grounded in the actual book text.
+
+```bash
+# Ask a general question
+curl -X POST http://localhost:8000/books/<BOOK_ID>/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Explain Newton third law with an example"}' \
+  | jq '{answer: .answer, pages: .source_pages}'
+```
+
+```bash
+# Ask within a specific chapter only
+curl -X POST http://localhost:8000/books/<BOOK_ID>/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What is simple harmonic motion?",
+    "chapter_id": "<CH_ID>",
+    "max_pages": 5
+  }' | jq '.answer'
+```
+
+Response includes:
+- `answer` — AI answer grounded in book text
+- `source_pages` — page numbers used as context
+- `chapter_title` — chapter name if restricted
+- `ai_enabled` — `true` when watsonx is active
+
+---
+
+## Export everything
+
+```bash
+# HTML — open in browser, nicely formatted
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=html" -o questions.html
+open questions.html
+
+# JSON
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=json" -o questions.json
+
+# CSV — open in Excel / Numbers
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=csv" -o questions.csv
+
+# PDF — printable
+curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf" -o questions.pdf
+```
+
+---
+
+## Start afresh (reset)
+
+Use this when the database is corrupted or you want a completely clean state.
+
+```bash
+# 1. Ctrl+C to stop the server
+
+# 2. Wipe everything
+rm -f storage/books.db
+rm -rf storage/books storage/indexes storage/exports
+mkdir -p storage/books storage/indexes storage/exports
+
+# 3. Re-copy .env (resets OCR_ENABLED=false)
+cp .env.example .env
+
+# 4. Restart
+.venv/bin/uvicorn app.main:app --reload --port 8000
+```
+
+Then re-upload and index from Step 1.
+
+---
+
+## Run tests
 
 ```bash
 cd book-knowledge-service
@@ -405,97 +485,91 @@ cd book-knowledge-service
 
 ---
 
-## Features
+## API reference
 
-| Capability | Detail |
-|---|---|
-| Upload & register PDFs | SHA-256 deduplication, size and header validation |
-| Index | PyMuPDF text extraction + optional Tesseract OCR, FTS5 full-text search |
-| Chapter detection | PDF bookmarks (TOC) → pattern-based text scanning fallback |
-| Page viewer | Rendered PNG + extracted text, keyboard navigation, search, chapter sidebar |
-| Question extraction | Examples, Worked Out Examples, Short Answer, Objective I/II, Exercises |
-| Export | JSON · CSV · HTML · PDF (ReportLab) with source page references |
-| Background jobs | Async in-process task tracking; swap in Celery+Redis for production |
+| Method | Endpoint | Auth needed | Purpose |
+|--------|----------|-------------|---------|
+| POST | `/books` | — | Upload a PDF |
+| GET | `/books` | — | List all books |
+| GET | `/books/{book_id}` | — | Book metadata and status |
+| POST | `/books/{book_id}/index` | — | Start indexing job |
+| GET | `/books/{book_id}/chapters` | — | List chapters |
+| GET | `/books/{book_id}/pages/{n}` | — | Page text |
+| GET | `/books/{book_id}/pages/{n}/render` | — | Page as PNG |
+| GET | `/books/{book_id}/search?q=...` | — | Full-text search |
+| POST | `/books/{book_id}/chapters/{ch_id}/extract` | — | Start pattern extraction |
+| GET | `/books/{book_id}/chapters/{ch_id}/questions` | — | List extracted questions |
+| GET | `/jobs/{job_id}` | — | Job progress |
+| GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | — | Export questions |
+| GET | `/books/{book_id}/questions/generate?topic=...` | — | Pattern-based topic questions |
+| POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | watsonx | AI question generation |
+| POST | `/books/{book_id}/ask` | watsonx | AI Q&A (RAG) |
+| GET | `/viewer/{book_id}?page=n` | — | HTML page viewer |
 
----
-
-## API Reference
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| POST | `/books` | Upload and register a PDF |
-| GET | `/books` | List all registered books |
-| GET | `/books/{book_id}` | Book metadata and status |
-| POST | `/books/{book_id}/index` | Start indexing job |
-| GET | `/books/{book_id}/chapters` | List detected chapters |
-| GET | `/books/{book_id}/pages/{n}` | Get extracted text for page n |
-| GET | `/books/{book_id}/pages/{n}/render` | Render page n as PNG |
-| GET | `/books/{book_id}/search?q=...` | Full-text search in book |
-| GET | `/books/{book_id}/chapters/{ch_id}/questions` | List extracted questions |
-| POST | `/books/{book_id}/chapters/{ch_id}/extract` | Start extraction job |
-| GET | `/jobs/{job_id}` | Check job progress |
-| GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | Export questions |
-| GET | `/books/{book_id}/questions/generate?topic=...&count=N&question_type=...&random=true\|false` | Generate N questions on a topic |
-| POST | `/books/{book_id}/ask` | Ask a question — watsonx RAG answer grounded in book text |
-| POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | Generate AI questions with proper notation (MCQ / short / numerical) |
-| GET | `/viewer/{book_id}?page=n` | HTML page viewer |
-
-Full interactive docs at `/docs` (Swagger UI) and `/redoc`.
+Full interactive docs: **http://localhost:8000/docs**
 
 ---
 
-## Docker
-
-```bash
-docker build -t book-knowledge-service .
-docker run -p 8000:8000 -v $(pwd)/storage:/app/storage book-knowledge-service
-```
-
----
-
-## Project Structure
+## Project structure
 
 ```
 book-knowledge-service/
 ├── app/
 │   ├── main.py               FastAPI app, viewer route, startup/shutdown
 │   ├── config.py             Settings (env / .env file)
-│   ├── models.py             Pydantic schemas (BookRecord, ChapterRecord, …)
-│   ├── database.py           SQLite + FTS5 init and schema
-│   ├── storage.py            PDF file storage, SHA-256 deduplication
-│   ├── pdf_processor.py      PyMuPDF text extraction, OCR fallback, PNG render
-│   ├── chapter_parser.py     TOC bookmarks + text-pattern chapter detection
-│   ├── indexer.py            Page persistence, FTS5 index, book status updates
-│   ├── question_extractor.py Pattern-based extraction of examples/questions
-│   ├── jobs.py               Async background job tracking
+│   ├── models.py             Pydantic schemas
+│   ├── database.py           SQLite + FTS5 schema
+│   ├── storage.py            PDF storage, SHA-256 dedup
+│   ├── pdf_processor.py      PyMuPDF extraction, OCR fallback, PNG render
+│   ├── chapter_parser.py     TOC + regex chapter detection
+│   ├── indexer.py            Page persistence, FTS5 rebuild
+│   ├── question_extractor.py Pattern-based question extraction
+│   ├── ai_client.py          IBM watsonx.ai wrapper (optional, graceful fallback)
+│   ├── jobs.py               Async job tracking
 │   ├── exporter.py           JSON / CSV / HTML / PDF export
 │   └── routers/
-│       ├── books.py          POST /books, GET /books, GET /books/{id}
-│       ├── index.py          /index, /chapters, /pages, /render, /search
-│       ├── questions.py      /questions, /extract
-│       └── jobs_export.py    /jobs/{id}, /export
+│       ├── books.py          POST/GET /books
+│       ├── index.py          /index, /chapters, /pages, /search
+│       ├── questions.py      /questions, /extract, /generate (pattern)
+│       ├── ai.py             /ask, /generate-questions (watsonx) — dev1 only
+│       └── jobs_export.py    /jobs, /export
 ├── templates/
-│   └── viewer.html           Jinja2 HTML page viewer
+│   └── viewer.html           Jinja2 page viewer
 ├── tests/
 │   ├── conftest.py
 │   └── test_api.py
-├── storage/                  (git-ignored except .gitkeep)
+├── storage/                  git-ignored
 │   ├── books/                uploaded PDFs
-│   ├── indexes/              render cache and future vector indexes
-│   └── exports/              generated export files
+│   ├── indexes/              render cache
+│   └── exports/              generated exports
 ├── Dockerfile
+├── docker-compose.yml
 ├── pytest.ini
 ├── requirements.txt
-├── .env.example
-└── .env                      (created from .env.example — git-ignored)
+├── .env.example              committed — safe template
+└── .env                      git-ignored — your local settings
+```
+
+Shared secrets (one level up, repo root):
+
+```
+quantum-computing/
+├── .env.secrets.example      committed — safe template
+└── .env.secrets              git-ignored — your real API keys
 ```
 
 ---
 
-## Design Decisions
+## Troubleshooting
 
-- **Separate concerns strictly:** viewing, indexing, and extraction are independent operations. A user can view a PDF before indexing completes.
-- **FTS5 built into SQLite:** no external search service needed for the initial implementation.
-- **SHA-256 deduplication:** re-uploading the same PDF returns HTTP 409 rather than creating a duplicate.
-- **Async jobs:** long operations (OCR, indexing) run as background asyncio tasks; job progress is queryable via `/jobs/{id}`.
-- **Copyrighted content:** never log extracted text; restrict export to authorised users; preserve source page references on every exported item.
+| Symptom | Fix |
+|---------|-----|
+| `ModuleNotFoundError: No module named 'fastapi'` | Use `.venv/bin/uvicorn` not bare `uvicorn` |
+| `DatabaseError: database disk image is malformed` | Run the **Start afresh** steps above |
+| `tesseract is not installed` errors | Set `OCR_ENABLED=false` in `.env` (already the default) |
+| `404` from `/questions/generate` | Run bulk extraction first (Step 13); check chapter titles match topic keyword |
+| AI endpoints return `503` | watsonx credentials not set — see [Configure watsonx AI](#configure-watsonx-ai-optional) |
+| `AI response could not be parsed as JSON` | Retry — occasionally the model wraps JSON in extra text; the raw text is returned as fallback |
+| `409 Conflict` on upload | Same PDF already uploaded — use `GET /books` to find it |
+| Indexing stuck on `pending` | Restart server; the asyncio task may not have started |
+| FTS5 `rebuild` warning in logs | Harmless — happens on first index after a fresh DB |
