@@ -135,6 +135,40 @@ async def update_book_status(
     await db.commit()
 
 
+# FTS5 stop-words / noise words to exclude from keyword search
+_STOP_WORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "need", "dare", "ought",
+    "used", "to", "of", "in", "on", "at", "by", "for", "with", "about",
+    "what", "which", "who", "whom", "how", "when", "where", "why",
+    "this", "that", "these", "those", "it", "its", "and", "or", "but",
+    "not", "no", "nor", "so", "yet", "both", "either", "neither",
+    "i", "me", "my", "we", "our", "you", "your", "he", "she", "they",
+    "his", "her", "their", "us",
+})
+
+
+def _fts5_query(query: str) -> str:
+    """
+    Convert a natural-language question into a FTS5 query string.
+
+    Strategy:
+    1. Strip punctuation, lower-case, drop stop-words.
+    2. Join remaining words with AND logic (each word quoted to avoid FTS5
+       special-char errors).
+    3. Fall back to a single broad quoted phrase if no keywords survive.
+    """
+    import re as _re
+    words = _re.sub(r"[^\w\s]", " ", query.lower()).split()
+    keywords = [w for w in words if w not in _STOP_WORDS and len(w) > 1]
+    if not keywords:
+        # Last resort: treat the whole query as a phrase
+        return '"{}"'.format(query.replace('"', '""'))
+    # Quote each keyword so FTS5 special chars (-, *, etc.) are treated literally
+    return " ".join('"{}"'.format(kw.replace('"', '""')) for kw in keywords)
+
+
 async def full_text_search(
     query: str,
     book_id: str | None = None,
@@ -144,10 +178,10 @@ async def full_text_search(
     """Run a FTS5 query and return ranked hits with snippets."""
     db = await get_db()
     # FTS5 MATCH does not accept ? positional params on all SQLite builds.
-    # Sanitize the query string (escape double-quotes) and inline it safely,
-    # then use named params only for the non-FTS filter columns.
-    safe_query = '"{}"'.format(query.replace('"', '""'))
-    where_clauses: list[str] = [f"pages_fts MATCH {safe_query}"]
+    # Build the match expression from keywords and inline it safely;
+    # use named params only for the non-FTS filter columns.
+    fts_expr = _fts5_query(query)
+    where_clauses: list[str] = [f"pages_fts MATCH {fts_expr}"]
     params: dict = {}
     if book_id:
         where_clauses.append("book_id = :book_id")
