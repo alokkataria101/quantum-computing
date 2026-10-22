@@ -143,13 +143,19 @@ async def full_text_search(
 ) -> list[dict]:
     """Run a FTS5 query and return ranked hits with snippets."""
     db = await get_db()
-    where_clauses: list[str] = ["pages_fts MATCH ?"]
-    params: list = [query]
+    # FTS5 MATCH does not accept ? positional params on all SQLite builds.
+    # Sanitize the query string (escape double-quotes) and inline it safely,
+    # then use named params only for the non-FTS filter columns.
+    safe_query = '"{}"'.format(query.replace('"', '""'))
+    where_clauses: list[str] = [f"pages_fts MATCH {safe_query}"]
+    params: dict = {}
     if book_id:
-        where_clauses.append("book_id = ?"); params.append(book_id)
+        where_clauses.append("book_id = :book_id")
+        params["book_id"] = book_id
     if chapter_id:
-        where_clauses.append("chapter_id = ?"); params.append(chapter_id)
-    params.append(limit)
+        where_clauses.append("chapter_id = :chapter_id")
+        params["chapter_id"] = chapter_id
+    params["limit"] = limit
 
     sql = f"""
         SELECT book_id, page_number, chapter_id,
@@ -158,7 +164,7 @@ async def full_text_search(
         FROM pages_fts
         WHERE {' AND '.join(where_clauses)}
         ORDER BY rank
-        LIMIT ?
+        LIMIT :limit
     """
     async with db.execute(sql, params) as cur:
         rows = await cur.fetchall()
