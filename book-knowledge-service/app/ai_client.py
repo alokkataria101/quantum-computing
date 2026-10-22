@@ -27,7 +27,7 @@ except ImportError:
 WATSONX_API_KEY    = os.getenv("WATSONX_API_KEY", "")
 WATSONX_PROJECT_ID = os.getenv("WATSONX_PROJECT_ID", "")
 WATSONX_URL        = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
-WATSONX_MODEL      = os.getenv("WATSONX_MODEL", "ibm/granite-3-8b-instruct")
+WATSONX_MODEL      = os.getenv("WATSONX_MODEL", "meta-llama/llama-3-3-70b-instruct")
 
 
 class AIClient:

@@ -133,12 +133,17 @@ Open `quantum-computing/.env.secrets` and fill in:
 WATSONX_API_KEY=your-api-key-here
 WATSONX_PROJECT_ID=your-project-id-here
 WATSONX_URL=https://us-south.ml.cloud.ibm.com
+
+# Optional — override the default model (see note below)
+# WATSONX_MODEL=meta-llama/llama-3-3-70b-instruct
 ```
 
 Where to find these:
 - **API key:** [IBM Cloud → Manage → Access → API keys](https://cloud.ibm.com/iam/apikeys) → Create
 - **Project ID:** [watsonx.ai](https://dataplatform.cloud.ibm.com) → your project → Manage tab → Project ID
 - **URL:** use `https://us-south.ml.cloud.ibm.com` for US, `https://eu-de.ml.cloud.ibm.com` for EU
+
+> **Model note:** The default model is `meta-llama/llama-3-3-70b-instruct`. If startup shows `Model '...' is not supported`, add `WATSONX_MODEL=<supported-model>` to `.env.secrets`. The supported models are listed in the error message — choose an instruct model (e.g. `meta-llama/llama-3-3-70b-instruct`, `mistralai/mistral-small-3-1-24b-instruct-2503`).
 
 ### Step C — verify
 
@@ -569,6 +574,7 @@ quantum-computing/
 | `tesseract is not installed` errors | Set `OCR_ENABLED=false` in `.env` (already the default) |
 | `404` from `/questions/generate` | Run bulk extraction first (Step 13); check chapter titles match topic keyword |
 | AI endpoints return `503` | watsonx credentials not set — see [Configure watsonx AI](#configure-watsonx-ai-optional) |
+| `Model '...' is not supported` at startup | Add `WATSONX_MODEL=meta-llama/llama-3-3-70b-instruct` to `.env.secrets`; the supported list is printed in the error |
 | `AI response could not be parsed as JSON` | Retry — occasionally the model wraps JSON in extra text; the raw text is returned as fallback |
 | `409 Conflict` on upload | Same PDF already uploaded — use `GET /books` to find it |
 | Indexing stuck on `pending` | Restart server; the asyncio task may not have started |
