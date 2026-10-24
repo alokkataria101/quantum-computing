@@ -357,6 +357,168 @@ book-knowledge-service/
 
 ---
 
+## Setup and Run on Ubuntu (personal reference)
+
+> Docker Desktop already installed and running. Python 3.13 not required on the host.
+
+### 1. Clone the repository
+
+```bash
+mkdir -p /tmp/dev2
+cd /tmp/dev2
+
+git clone https://github.com/alokkataria101/quantum-computing.git
+cd quantum-computing/book-knowledge-service
+
+git checkout dev2
+git pull
+```
+
+---
+
+### 2. Configure secrets
+
+Create the secrets file at the repo root:
+
+```bash
+cd ..
+vi .env.secrets
+```
+
+Fill in your IBM watsonx.ai credentials:
+
+```bash
+WATSONX_API_KEY=your_api_key
+WATSONX_PROJECT_ID=your_project_id
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+```
+
+Save, then return to the service directory and copy into the secrets folder:
+
+```bash
+cd book-knowledge-service
+cp ../.env.secrets secrets/.env.secrets
+```
+
+> Never commit `.env.secrets` or expose your API key publicly.
+
+---
+
+### 3. Build the Docker image
+
+From inside `book-knowledge-service/`:
+
+```bash
+docker build -t book-knowledge-service .
+```
+
+First build takes 2–3 minutes. The image uses Python 3.13 — no host Python needed.
+
+---
+
+### 4. Start the service
+
+```bash
+docker compose up          # foreground (see logs live)
+# or
+docker compose up -d       # background (detached)
+```
+
+Look for these lines to confirm it started correctly:
+
+```
+[entrypoint] Loading secrets from /app/secrets/.env.secrets
+[AI] IBM watsonx initialised (model=meta-llama/llama-3-3-70b-instruct).
+INFO:     Application startup complete.
+```
+
+---
+
+### 5. Access the application
+
+| Resource | URL |
+|---|---|
+| Home / health | http://localhost:8000 |
+| API docs (Swagger) | http://localhost:8000/docs |
+| Books API | http://localhost:8000/books |
+
+---
+
+### 6. Upload and use a book
+
+1. Open **http://localhost:8000/docs**
+2. `POST /books` — upload a PDF
+3. `POST /books/{book_id}/index` — index it
+4. `POST /books/{book_id}/ask` — ask a question (AI)
+5. `POST /books/{book_id}/chapters/{chapter_id}/generate-questions` — generate questions (AI)
+6. Explore chapter, page, search, and export endpoints
+
+---
+
+### 7. View logs
+
+```bash
+docker compose logs -f
+```
+
+---
+
+### 8. Stop the service
+
+```bash
+# Foreground: Ctrl+C
+# Background:
+docker compose down
+```
+
+`storage/` is preserved — your indexed books and DB persist across restarts.
+
+---
+
+### 9. Restart
+
+```bash
+cd /tmp/dev2/quantum-computing/book-knowledge-service
+docker compose up -d
+```
+
+---
+
+### 10. Expose publicly with ngrok
+
+ngrok gives you a public HTTPS URL to access the service from outside your machine.
+
+> **Prerequisite:** service must be running on port 8000.
+
+**Start ngrok** (new terminal):
+
+```bash
+ngrok http 8000
+```
+
+Wait for:
+
+```
+Session Status: online
+Forwarding: https://<your-ngrok-url> -> http://localhost:8000
+```
+
+**Access remotely** using the HTTPS URL ngrok shows:
+
+| Resource | URL |
+|---|---|
+| Application | https://\<your-ngrok-url\> |
+| API docs | https://\<your-ngrok-url\>/docs |
+| Books API | https://\<your-ngrok-url\>/books |
+
+**Monitor requests:** http://127.0.0.1:4040 — ngrok web UI for inspecting live traffic.
+
+**Stop ngrok:** `Ctrl+C` in the ngrok terminal.
+
+> **Security:** the public URL is reachable from the internet. Don't expose sensitive documents without access controls. Keep your watsonx credentials private — they are never sent to ngrok.
+
+---
+
 ## Upload and index a book
 
 Replace `<BOOK_ID>` and `<JOB_ID>` with the values returned by each command.
