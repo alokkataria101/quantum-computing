@@ -1,7 +1,10 @@
 """
 config.py
 
-Central configuration for the Stock Analyzer.
+Central configuration for the
+Quantum Portfolio Intelligence Platform (QPIP).
+
+Version : 11.0.1
 """
 
 import os

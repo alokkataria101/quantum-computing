@@ -53,15 +53,51 @@ Complete redesign from the prior QAMO release. Same quantum engine, entirely new
 
 ## Quick Start
 
+### Local Python setup
+
 ```bash
 cd version-11.0.1/stock-analysis
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run app.py --server.headless true --server.port 8501
+```
+
+### Docker container setup
+
+```bash
+cd version-11.0.1/stock-analysis
+docker build -t quantum-stock-analyzer:latest .
+docker run --rm -it -p 8501:8501 quantum-stock-analyzer:latest
+```
+
+Or with Compose:
+
+```bash
+cd version-11.0.1/stock-analysis
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://localhost:8501
 ```
 
 1. Enter your NSE symbols in the sidebar (e.g. `RELIANCE TCS INFY HDFCBANK`)
 2. Click **⚡ Run Analysis**
 3. The **Quantum Decision Center** loads instantly
+
+### Test the running app
+
+```bash
+curl -I http://localhost:8501
+```
+
+If your container is running in Docker Compose, you can also check:
+
+```bash
+docker ps
+docker logs -f quantum-stock-analyzer
+```
 
 ---
 
