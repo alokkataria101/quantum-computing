@@ -82,6 +82,43 @@ docker compose up --build
 
 ---
 
+## Expose publicly with ngrok
+
+ngrok gives you a public HTTPS URL so you can access the dashboard from any device or share it with someone else.
+
+> **Prerequisite:** the app must be running locally (port 8503).
+
+**Install ngrok** (if not already):
+```bash
+brew install ngrok        # macOS
+# or download from https://ngrok.com/download
+```
+
+**Start ngrok** (new terminal):
+```bash
+ngrok http 8503
+```
+
+Wait for:
+```
+Session Status: online
+Forwarding: https://<your-ngrok-url> -> http://localhost:8503
+```
+
+**Access remotely** using the HTTPS URL ngrok shows:
+
+| Resource | URL |
+|---|---|
+| Dashboard | https://\<your-ngrok-url\> |
+
+**Monitor requests:** http://127.0.0.1:4040 — ngrok web UI for inspecting live traffic.
+
+**Stop ngrok:** `Ctrl+C` in the ngrok terminal.
+
+> **Security:** the public URL is reachable from the internet. Keep your watsonx credentials private — they are never sent to ngrok.
+
+---
+
 ## Architecture
 
 ```
