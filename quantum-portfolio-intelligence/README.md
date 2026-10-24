@@ -136,6 +136,35 @@ Users see plain language. Behind each metric is a real computation:
 
 ---
 
+## IBM watsonx AI (optional)
+
+QPIP runs fully without AI. If watsonx credentials are configured, the **AI Portfolio Report** tab generates a natural-language investment analysis using `meta-llama/llama-3-3-70b-instruct`.
+
+### Setup
+
+All apps in this repo share a single secrets file at the **repo root**:
+
+```bash
+# quantum-computing/.env.secrets  (git-ignored, never committed)
+WATSONX_API_KEY=your-api-key-here
+WATSONX_PROJECT_ID=your-project-id-here
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+```
+
+`config.py` loads this file automatically on startup — no other configuration needed.
+
+To override the model for this app only, add to `quantum-portfolio-intelligence/.env`:
+
+```bash
+WATSONX_MODEL=meta-llama/llama-3-3-70b-instruct
+```
+
+### Without credentials
+
+The app starts and runs normally. The AI report section displays a friendly message and is skipped — all quantum analysis, signals, charts, and recommendations work as usual.
+
+---
+
 ## Sample Data
 
 The `data/` folder includes 365-day and 730-day CSVs for:
@@ -143,4 +172,4 @@ The `data/` folder includes 365-day and 730-day CSVs for:
 
 ---
 
-*Built on QAMO quantum engine · IBM watsonx AI · Qiskit Aer*
+*Built on QAMO quantum engine · IBM watsonx AI (optional) · Qiskit Aer*

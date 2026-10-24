@@ -196,6 +196,23 @@ python run_all.py --output my_results.md   # custom output file
 
 ---
 
+## IBM watsonx AI — Shared Configuration
+
+All three apps that use watsonx (`quantum-portfolio-intelligence`, `book-knowledge-service`, `stock-analyzer`) read credentials from a **single file at the repo root**:
+
+```bash
+# quantum-computing/.env.secrets  (git-ignored — never committed)
+WATSONX_API_KEY=your-api-key-here
+WATSONX_PROJECT_ID=your-project-id-here
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+```
+
+Set this once and all apps pick it up automatically. **AI is optional in every app** — if credentials are absent the app starts normally and skips AI features with a clear message.
+
+To override the model for a specific app, add `WATSONX_MODEL=...` to that app's local `.env` file.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
