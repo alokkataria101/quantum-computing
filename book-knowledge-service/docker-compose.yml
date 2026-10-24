@@ -1,0 +1,43 @@
+# docker-compose.yml — Book Knowledge Service
+#
+# Usage (Option A — default secrets location):
+#   1. Copy your credentials:
+#        cp ../../.env.secrets secrets/.env.secrets
+#   2. Drop PDFs into the books/ folder
+#   3. docker compose up --build
+#
+# Usage (Option B — custom secrets path):
+#   SECRETS_FILE=/path/to/my/keys.env docker compose up --build
+#
+# Usage (Option C — no AI):
+#   docker compose up --build     (without a secrets file — AI gracefully disabled)
+
+services:
+  book-knowledge-service:
+    build: .
+    image: book-knowledge-service:latest
+    container_name: book-knowledge-service
+    ports:
+      - "8000:8000"
+    environment:
+      - STORAGE_DIR=/app/storage
+      - DATABASE_PATH=/app/storage/books.db
+      - LOG_LEVEL=INFO
+      - OCR_ENABLED=false
+      # Option B: override secrets file path at runtime
+      # - SECRETS_FILE=/run/secrets/.env.secrets
+    volumes:
+      # Persistent DB + indexed files
+      - ./storage:/app/storage
+      # Intake folder — drop PDFs here to auto-load on startup
+      - ./books:/app/books
+      # Default secrets location (Option A)
+      # Put your .env.secrets here: secrets/.env.secrets
+      - ./secrets:/app/secrets
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

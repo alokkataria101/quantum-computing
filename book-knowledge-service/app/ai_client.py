@@ -12,15 +12,31 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# ── Load shared .env.secrets from repo root, then local .env ─────────────────
+# ── Load secrets / API keys (checked in order, first match wins) ─────────────
+# 1. SECRETS_FILE env var           — explicit override (Docker -e flag)
+# 2. /app/secrets/.env.secrets      — Docker volume mount default
+# 3. /run/secrets/.env.secrets      — Docker Swarm / Compose secrets standard
+# 4. <repo-root>/.env.secrets       — local development (repo root)
+# 5. Plain environment variables    — always the final fallback
 try:
     from dotenv import load_dotenv
     _here      = Path(__file__).resolve().parent.parent  # book-knowledge-service/
     _repo_root = _here.parent                             # quantum-computing/
-    load_dotenv(_repo_root / ".env.secrets", override=False)
-    load_dotenv(_here / ".env", override=True)
+
+    _candidates = [
+        os.getenv("SECRETS_FILE", ""),          # 1. explicit
+        "/app/secrets/.env.secrets",            # 2. Docker volume default
+        "/run/secrets/.env.secrets",            # 3. Docker Swarm standard
+        str(_repo_root / ".env.secrets"),       # 4. local dev repo root
+    ]
+    for _f in _candidates:
+        if _f and Path(_f).is_file():
+            load_dotenv(_f, override=False)
+            break
+
+    load_dotenv(_here / ".env", override=True)  # project .env always last
 except ImportError:
-    pass  # fall back to plain environment variables
+    pass  # python-dotenv not installed — fall back to plain environment variables
 
 
 # ── Credentials (empty = AI disabled) ────────────────────────────────────────

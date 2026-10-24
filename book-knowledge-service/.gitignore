@@ -9,3 +9,5 @@ storage/exports/
 .env
 # Intake folder — PDFs dropped here are auto-loaded on startup (not committed)
 books/*.pdf
+secrets/*.secrets
+secrets/*.env
