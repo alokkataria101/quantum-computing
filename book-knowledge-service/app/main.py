@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -22,12 +24,99 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Intake folder: book-knowledge-service/books/
+# Drop PDFs here before starting the server — they are auto-registered and indexed.
+_INTAKE_DIR = Path(__file__).resolve().parent.parent / "books"
+
+
+async def _autoload_intake_books() -> None:
+    """Register and index any PDFs found in the intake folder at startup."""
+    _INTAKE_DIR.mkdir(parents=True, exist_ok=True)
+    pdfs = sorted(_INTAKE_DIR.glob("*.pdf"))
+    if not pdfs:
+        return
+
+    from .database import get_db as _get_db
+    from .storage import save_uploaded_pdf, compute_sha256, book_path
+    from .pdf_processor import extract_pdf_meta, extract_pages
+    from .chapter_parser import detect_chapters
+    from .indexer import upsert_pages, upsert_chapters, rebuild_fts, update_book_status
+
+    db = await _get_db()
+
+    for pdf_path in pdfs:
+        try:
+            data = pdf_path.read_bytes()
+            sha256 = compute_sha256(data)
+
+            # Skip if already registered
+            async with db.execute("SELECT book_id FROM books WHERE sha256 = ?", (sha256,)) as cur:
+                existing = await cur.fetchone()
+            if existing:
+                logger.info("[autoload] %s already registered (book_id=%s), skipping.", pdf_path.name, existing["book_id"])
+                continue
+
+            book_id = str(uuid.uuid4())
+            await save_uploaded_pdf(data, book_id)
+
+            try:
+                meta = extract_pdf_meta(book_path(book_id))
+                title       = meta.title or pdf_path.stem
+                author      = meta.author or ""
+                total_pages = meta.total_pages
+            except Exception:
+                title, author, total_pages = pdf_path.stem, "", 0
+
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc).isoformat()
+            await db.execute(
+                """INSERT INTO books
+                   (book_id, filename, title, author, total_pages, file_size,
+                    sha256, status, uploaded_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,'pending',?,?)""",
+                (book_id, pdf_path.name, title, author, total_pages,
+                 len(data), sha256, now, now),
+            )
+            await db.commit()
+            logger.info("[autoload] Registered %s → book_id=%s", pdf_path.name, book_id)
+
+            # Index in the background so startup is not blocked
+            async def _index(bid: str = book_id, path: Path = book_path(book_id)) -> None:
+                try:
+                    await update_book_status(bid, "indexing")
+                    meta2   = extract_pdf_meta(path)
+                    pages   = extract_pages(path, ocr_enabled=settings.ocr_enabled,
+                                            ocr_language=settings.ocr_language,
+                                            dpi=settings.render_dpi)
+                    chaps   = detect_chapters(bid, meta2, pages)
+                    await upsert_chapters(chaps)
+                    ch_map  = {pn: ch.chapter_id
+                               for ch in chaps
+                               for pn in range(ch.page_start, ch.page_end + 1)}
+                    await upsert_pages(bid, pages, ch_map)
+                    await rebuild_fts(bid)
+                    await update_book_status(bid, "indexed",
+                                             total_pages=len(pages),
+                                             title=meta2.title or None,
+                                             author=meta2.author or None)
+                    logger.info("[autoload] Indexed %s (%d pages).", path.name, len(pages))
+                except Exception as exc:
+                    await update_book_status(bid, "error", error=str(exc))
+                    logger.error("[autoload] Failed to index %s: %s", path.name, exc)
+
+            asyncio.create_task(_index())
+
+        except Exception as exc:
+            logger.error("[autoload] Error processing %s: %s", pdf_path.name, exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.books_dir.mkdir(parents=True, exist_ok=True)
     settings.indexes_dir.mkdir(parents=True, exist_ok=True)
     settings.exports_dir.mkdir(parents=True, exist_ok=True)
     await init_db()
+    await _autoload_intake_books()
     logger.info("book-knowledge-service started.")
     yield
     await close_db()
