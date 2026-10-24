@@ -60,7 +60,18 @@ cd quantum-computing/book-knowledge-service
 git checkout dev1
 ```
 
-> **Which branch?** Use `main` if you just want to upload, index, and extract questions without AI. Use `dev1` if you have IBM watsonx credentials and want AI-powered Q&A and question generation.
+### Option C — dev2 branch (AI endpoints + Docker + auto-load intake folder)
+
+```bash
+git clone https://github.com/alokkataria101/quantum-computing.git
+cd quantum-computing/book-knowledge-service
+git checkout dev2
+```
+
+> **Which branch?**
+> - `main` — upload, index, extract questions; no AI, no Docker
+> - `dev1` — adds IBM watsonx AI endpoints (Q&A, question generation)
+> - `dev2` — everything in dev1, plus Docker support with flexible secrets file and a `books/` intake folder that auto-loads PDFs on startup
 
 ---
 
@@ -185,6 +196,94 @@ Open in browser:
 |-----|------|
 | http://localhost:8000/docs | Swagger UI — interactive API docs |
 | http://localhost:8000/redoc | ReDoc — alternative docs |
+
+---
+
+## Run with Docker (dev2)
+
+Docker is available on the `dev2` branch. It handles secrets, the intake folder, and persistent storage all via volume mounts.
+
+### Option A — default secrets location (recommended)
+
+```bash
+# 1. Copy your credentials into the secrets folder
+cp ../../.env.secrets secrets/.env.secrets
+
+# 2. Optionally drop PDFs to auto-load on startup
+cp /path/to/book.pdf books/
+
+# 3. Start
+docker compose up --build
+```
+
+### Option B — pass any secrets file path
+
+```bash
+SECRETS_FILE=/absolute/path/to/mykeys.env docker compose up --build
+```
+
+Or with plain `docker run`:
+
+```bash
+docker build -t book-knowledge-service .
+
+docker run --rm -p 8000:8000 \
+  -e SECRETS_FILE=/mykeys/.env.secrets \
+  -v /path/to/your/keys:/mykeys \
+  -v $(pwd)/storage:/app/storage \
+  -v $(pwd)/books:/app/books \
+  book-knowledge-service
+```
+
+### Option C — no AI (zero config)
+
+```bash
+docker compose up --build
+# Starts without any secrets file — all non-AI endpoints work normally
+# AI endpoints return 503 with a clear message
+```
+
+### Secrets resolution order (inside the container)
+
+The entrypoint checks these locations in order — first match wins:
+
+| Priority | Location | How to use |
+|----------|----------|------------|
+| 1 | `$SECRETS_FILE` env var | `-e SECRETS_FILE=/any/path` |
+| 2 | `/app/secrets/.env.secrets` | `-v ./secrets:/app/secrets` (default) |
+| 3 | `/run/secrets/.env.secrets` | Docker Swarm / Compose secrets |
+| 4 | Plain env vars | `-e WATSONX_API_KEY=... -e WATSONX_PROJECT_ID=...` |
+
+### Persistent volumes
+
+| Volume | Purpose |
+|--------|---------|
+| `./storage:/app/storage` | SQLite DB + indexed book files |
+| `./books:/app/books` | Intake folder — auto-loaded on startup |
+| `./secrets:/app/secrets` | Secrets / API keys file |
+
+---
+
+## Auto-load books on startup (dev2)
+
+Drop PDF files into the `books/` folder before starting the server — they are automatically registered and indexed.
+
+```
+book-knowledge-service/
+└── books/
+    └── physics-part1.pdf    ← dropped here, auto-loaded on startup
+```
+
+**Works with both local Python and Docker.**
+
+- Deduplication by SHA-256 — restarting the server never re-indexes the same file
+- Indexing runs in the background — server is ready immediately
+- Watch the logs for progress:
+
+```
+[autoload] Registered physics-part1.pdf → book_id=abc-123
+[autoload] Indexed physics-part1.pdf (479 pages).
+```
 
 ---
 
@@ -579,3 +678,7 @@ quantum-computing/
 | `409 Conflict` on upload | Same PDF already uploaded — use `GET /books` to find it |
 | Indexing stuck on `pending` | Restart server; the asyncio task may not have started |
 | FTS5 `rebuild` warning in logs | Harmless — happens on first index after a fresh DB |
+| Docker: AI still disabled after mounting secrets | Check the log for `[entrypoint] Loading secrets from ...` — if missing, verify the file path and that the volume is mounted correctly |
+| Docker: `[entrypoint] WARNING: SECRETS_FILE=... not found` | The path passed via `-e SECRETS_FILE=...` does not exist inside the container — check the volume mount |
+| Docker: book in `books/` not auto-loaded | Check logs for `[autoload]` lines; ensure the `books/` volume is mounted (`-v $(pwd)/books:/app/books`) |
+| Docker: `[autoload] ... already registered, skipping` | Normal on restart — SHA-256 deduplication prevents re-indexing the same file |
