@@ -45,33 +45,24 @@ python3.13 --version   # should print Python 3.13.x
 
 ## Get the code
 
-### Option A — main branch (stable, no AI endpoints)
+
+First, pick the branch that matches what you want to do:
+
+| Branch | What you get | Use when |
+|--------|-------------|----------|
+| `main` | Upload, index, search, extract questions | No AI needed, simplest setup |
+| `dev1` | Everything in main + IBM watsonx AI Q&A and question generation | You have watsonx credentials and want AI features |
+| `dev2` | Everything in dev1 + Docker + `books/` auto-load folder | You want to run in Docker or drop PDFs in a folder to auto-index |
 
 ```bash
 git clone https://github.com/alokkataria101/quantum-computing.git
 cd quantum-computing/book-knowledge-service
+
+# Pick ONE of these depending on what you want:
+git checkout main    # no AI
+git checkout dev1    # AI (watsonx), no Docker
+git checkout dev2    # AI (watsonx) + Docker + auto-load books/
 ```
-
-### Option B — dev1 branch (includes watsonx AI endpoints)
-
-```bash
-git clone https://github.com/alokkataria101/quantum-computing.git
-cd quantum-computing/book-knowledge-service
-git checkout dev1
-```
-
-### Option C — dev2 branch (AI endpoints + Docker + auto-load intake folder)
-
-```bash
-git clone https://github.com/alokkataria101/quantum-computing.git
-cd quantum-computing/book-knowledge-service
-git checkout dev2
-```
-
-> **Which branch?**
-> - `main` — upload, index, extract questions; no AI, no Docker
-> - `dev1` — adds IBM watsonx AI endpoints (Q&A, question generation)
-> - `dev2` — everything in dev1, plus Docker support with flexible secrets file and a `books/` intake folder that auto-loads PDFs on startup
 
 ---
 
@@ -199,31 +190,41 @@ Open in browser:
 
 ---
 
-## Run with Docker (dev2)
+## Run with Docker (dev2 — AI + Docker)
 
-> **Requires:** Docker Desktop (or Docker Engine) installed and running. No Python needed on your machine.
+> **Requires:** Docker Desktop installed and running (whale icon in menu bar). No Python needed.
+> Download: https://www.docker.com/products/docker-desktop/
 
 ---
 
-### Folder structure before you start
+### What you need before starting
 
-After cloning and checking out `dev2`, your working directory looks like this:
+- Docker Desktop running
+- Your IBM watsonx API key and Project ID *(optional — skip if you don't need AI)*
+- Your PDF books *(optional — you can also upload them via the API later)*
+
+---
+
+### Folder layout
+
+The repo already has these folders inside `book-knowledge-service/`. You just fill them:
 
 ```
 book-knowledge-service/
-├── books/          ← put your PDF books here (auto-loaded on startup)
-├── secrets/        ← put your API keys file here
-├── storage/        ← created automatically; holds the DB and indexed files
+├── books/                  ← DROP YOUR PDFs HERE (auto-indexed on startup)
+├── secrets/
+│   └── .env.secrets        ← PUT YOUR API KEYS HERE (you create this file)
+├── storage/                ← created automatically; do not touch
 ├── Dockerfile
 ├── docker-compose.yml
-└── ...
+└── app/
 ```
 
-Both `books/` and `secrets/` folders already exist in the repo (with a `.gitkeep`). Your PDFs and secrets file are git-ignored — they live only on your machine.
+Both `books/` and `secrets/` are git-ignored — your files stay only on your machine.
 
 ---
 
-### Step 1 — Clone and switch to dev2
+### Step 1 — Get the code
 
 ```bash
 git clone https://github.com/alokkataria101/quantum-computing.git
@@ -233,18 +234,12 @@ git checkout dev2
 
 ---
 
-### Step 2 — Add your API keys (optional — only needed for AI features)
+### Step 2 — Add your API keys
 
-Create the secrets file at `secrets/.env.secrets` inside the `book-knowledge-service/` folder:
-
-```bash
-# From inside book-knowledge-service/
-cp ../../.env.secrets secrets/.env.secrets
-```
-
-If you are starting completely fresh (no existing `.env.secrets`), create the file manually:
+Create `secrets/.env.secrets` with your watsonx credentials:
 
 ```bash
+# Run this from inside book-knowledge-service/
 cat > secrets/.env.secrets << 'EOF'
 WATSONX_API_KEY=your-api-key-here
 WATSONX_PROJECT_ID=your-project-id-here
@@ -252,101 +247,91 @@ WATSONX_URL=https://us-south.ml.cloud.ibm.com
 EOF
 ```
 
-> If you skip this step the service starts and works normally — AI endpoints (`/ask`, `/generate-questions`) will return HTTP 503 with a clear message until credentials are added.
+Where to find these values:
+- **API key** → [IBM Cloud → Manage → Access → API keys](https://cloud.ibm.com/iam/apikeys) → Create
+- **Project ID** → [watsonx.ai](https://dataplatform.cloud.ibm.com) → your project → Manage tab → Project ID
+
+> **No watsonx account?** Skip this step entirely. The service starts and works without it — only the `/ask` and `/generate-questions` endpoints return HTTP 503 until credentials are added.
 
 ---
 
-### Step 3 — Add books (optional — auto-loaded on startup)
-
-Copy any PDF textbooks into the `books/` folder:
+### Step 3 — Add your PDF books *(optional)*
 
 ```bash
-cp /path/to/your/physics-book.pdf books/
+cp /path/to/your/book.pdf books/
 ```
 
-The service will automatically register and index every PDF it finds in `books/` when it starts. You can also skip this and upload books manually via the API later.
+Every PDF in `books/` is automatically registered and indexed when the container starts. You can also skip this and upload books through the API (`POST /books`) after the server is running.
 
 ---
 
-### Step 4 — Build the Docker image
+### Step 4 — Build the image
+
+Run this once from inside `book-knowledge-service/`:
 
 ```bash
 docker build -t book-knowledge-service .
 ```
 
-This takes 2–3 minutes the first time (downloads base image, installs dependencies). Subsequent builds are fast due to layer caching.
+First build takes 2–3 minutes. Rebuild only needed when code changes.
 
 ---
 
-### Step 5 — Run the container
-
-**With docker compose (recommended):**
+### Step 5 — Start the service
 
 ```bash
 docker compose up
 ```
 
-**With plain docker run:**
-
-```bash
-docker run --rm -p 8000:8000 \
-  -v $(pwd)/storage:/app/storage \
-  -v $(pwd)/books:/app/books \
-  -v $(pwd)/secrets:/app/secrets \
-  book-knowledge-service
-```
-
-The server is ready when you see:
+The service is ready when you see all three of these lines:
 
 ```
 [entrypoint] Loading secrets from /app/secrets/.env.secrets
 [AI] IBM watsonx initialised (model=meta-llama/llama-3-3-70b-instruct).
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 INFO:     Application startup complete.
-[autoload] Registered physics-book.pdf → book_id=abc-123...
-[autoload] Indexed physics-book.pdf (479 pages).
 ```
 
-Open in browser: **http://localhost:8000/docs**
+If you added PDFs in Step 3, you will also see:
+
+```
+[autoload] Registered book.pdf → book_id=<uuid>
+[autoload] Indexed book.pdf (479 pages).
+```
+
+Open: **http://localhost:8000/docs**
 
 ---
 
-### Step 6 — Stop the container
+### Step 6 — Stop
 
 ```bash
-docker compose down       # if using compose
-# or Ctrl+C               # if using docker run --rm
+docker compose down
 ```
 
-Your indexed data in `storage/` persists across restarts. Next time just run Step 5 — no rebuild needed unless code changes.
+`storage/` persists across restarts — your indexed books and DB are never lost. Next time just run `docker compose up` — no rebuild needed.
 
 ---
 
-### Passing secrets from a different location (advanced)
+### Advanced — secrets file in a custom location
 
-If your secrets file is stored somewhere else on your machine, pass its path via the `SECRETS_FILE` environment variable:
+If your `.env.secrets` lives somewhere else (e.g. at the repo root from a previous setup):
 
 ```bash
-# docker compose
-SECRETS_FILE=/Users/me/keys/.env.secrets docker compose up
+# Option 1 — copy it into the secrets/ folder (recommended)
+cp ../../.env.secrets secrets/.env.secrets
 
-# plain docker run
-docker run --rm -p 8000:8000 \
-  -e SECRETS_FILE=/mykeys/.env.secrets \
-  -v /Users/me/keys:/mykeys \
-  -v $(pwd)/storage:/app/storage \
-  -v $(pwd)/books:/app/books \
-  book-knowledge-service
+# Option 2 — point to it via environment variable
+SECRETS_FILE=/absolute/path/to/.env.secrets docker compose up
 ```
 
 The entrypoint checks these locations in order — first match wins:
 
 | Priority | Location | How to set |
 |----------|----------|------------|
-| 1 | `$SECRETS_FILE` env var | `-e SECRETS_FILE=/any/path` |
-| 2 | `/app/secrets/.env.secrets` | default — put file in `secrets/` folder |
+| 1 | `$SECRETS_FILE` env var | `SECRETS_FILE=/path docker compose up` |
+| 2 | `secrets/.env.secrets` | default — just put the file there |
 | 3 | `/run/secrets/.env.secrets` | Docker Swarm / Compose secrets |
-| 4 | No file — graceful fallback | AI disabled, everything else works |
+| 4 | No file found | AI disabled, all other features work |
 
 ---
 
