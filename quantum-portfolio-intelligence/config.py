@@ -180,7 +180,7 @@ WATSONX_PROJECT_ID = os.getenv(
 
 WATSONX_MODEL = os.getenv(
     "WATSONX_MODEL",
-    "ibm/granite-3-8b-instruct"
+    "meta-llama/llama-3-3-70b-instruct"
 )
 
 #
