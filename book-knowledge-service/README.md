@@ -201,88 +201,173 @@ Open in browser:
 
 ## Run with Docker (dev2)
 
-Docker is available on the `dev2` branch. It handles secrets, the intake folder, and persistent storage all via volume mounts.
+> **Requires:** Docker Desktop (or Docker Engine) installed and running. No Python needed on your machine.
 
-### Option A — default secrets location (recommended)
+---
+
+### Folder structure before you start
+
+After cloning and checking out `dev2`, your working directory looks like this:
+
+```
+book-knowledge-service/
+├── books/          ← put your PDF books here (auto-loaded on startup)
+├── secrets/        ← put your API keys file here
+├── storage/        ← created automatically; holds the DB and indexed files
+├── Dockerfile
+├── docker-compose.yml
+└── ...
+```
+
+Both `books/` and `secrets/` folders already exist in the repo (with a `.gitkeep`). Your PDFs and secrets file are git-ignored — they live only on your machine.
+
+---
+
+### Step 1 — Clone and switch to dev2
 
 ```bash
-# 1. Copy your credentials into the secrets folder
+git clone https://github.com/alokkataria101/quantum-computing.git
+cd quantum-computing/book-knowledge-service
+git checkout dev2
+```
+
+---
+
+### Step 2 — Add your API keys (optional — only needed for AI features)
+
+Create the secrets file at `secrets/.env.secrets` inside the `book-knowledge-service/` folder:
+
+```bash
+# From inside book-knowledge-service/
 cp ../../.env.secrets secrets/.env.secrets
-
-# 2. Optionally drop PDFs to auto-load on startup
-cp /path/to/book.pdf books/
-
-# 3. Start
-docker compose up --build
 ```
 
-### Option B — pass any secrets file path
+If you are starting completely fresh (no existing `.env.secrets`), create the file manually:
 
 ```bash
-SECRETS_FILE=/absolute/path/to/mykeys.env docker compose up --build
+cat > secrets/.env.secrets << 'EOF'
+WATSONX_API_KEY=your-api-key-here
+WATSONX_PROJECT_ID=your-project-id-here
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+EOF
 ```
 
-Or with plain `docker run`:
+> If you skip this step the service starts and works normally — AI endpoints (`/ask`, `/generate-questions`) will return HTTP 503 with a clear message until credentials are added.
+
+---
+
+### Step 3 — Add books (optional — auto-loaded on startup)
+
+Copy any PDF textbooks into the `books/` folder:
+
+```bash
+cp /path/to/your/physics-book.pdf books/
+```
+
+The service will automatically register and index every PDF it finds in `books/` when it starts. You can also skip this and upload books manually via the API later.
+
+---
+
+### Step 4 — Build the Docker image
 
 ```bash
 docker build -t book-knowledge-service .
+```
 
+This takes 2–3 minutes the first time (downloads base image, installs dependencies). Subsequent builds are fast due to layer caching.
+
+---
+
+### Step 5 — Run the container
+
+**With docker compose (recommended):**
+
+```bash
+docker compose up
+```
+
+**With plain docker run:**
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v $(pwd)/storage:/app/storage \
+  -v $(pwd)/books:/app/books \
+  -v $(pwd)/secrets:/app/secrets \
+  book-knowledge-service
+```
+
+The server is ready when you see:
+
+```
+[entrypoint] Loading secrets from /app/secrets/.env.secrets
+[AI] IBM watsonx initialised (model=meta-llama/llama-3-3-70b-instruct).
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Application startup complete.
+[autoload] Registered physics-book.pdf → book_id=abc-123...
+[autoload] Indexed physics-book.pdf (479 pages).
+```
+
+Open in browser: **http://localhost:8000/docs**
+
+---
+
+### Step 6 — Stop the container
+
+```bash
+docker compose down       # if using compose
+# or Ctrl+C               # if using docker run --rm
+```
+
+Your indexed data in `storage/` persists across restarts. Next time just run Step 5 — no rebuild needed unless code changes.
+
+---
+
+### Passing secrets from a different location (advanced)
+
+If your secrets file is stored somewhere else on your machine, pass its path via the `SECRETS_FILE` environment variable:
+
+```bash
+# docker compose
+SECRETS_FILE=/Users/me/keys/.env.secrets docker compose up
+
+# plain docker run
 docker run --rm -p 8000:8000 \
   -e SECRETS_FILE=/mykeys/.env.secrets \
-  -v /path/to/your/keys:/mykeys \
+  -v /Users/me/keys:/mykeys \
   -v $(pwd)/storage:/app/storage \
   -v $(pwd)/books:/app/books \
   book-knowledge-service
 ```
 
-### Option C — no AI (zero config)
-
-```bash
-docker compose up --build
-# Starts without any secrets file — all non-AI endpoints work normally
-# AI endpoints return 503 with a clear message
-```
-
-### Secrets resolution order (inside the container)
-
 The entrypoint checks these locations in order — first match wins:
 
-| Priority | Location | How to use |
+| Priority | Location | How to set |
 |----------|----------|------------|
 | 1 | `$SECRETS_FILE` env var | `-e SECRETS_FILE=/any/path` |
-| 2 | `/app/secrets/.env.secrets` | `-v ./secrets:/app/secrets` (default) |
+| 2 | `/app/secrets/.env.secrets` | default — put file in `secrets/` folder |
 | 3 | `/run/secrets/.env.secrets` | Docker Swarm / Compose secrets |
-| 4 | Plain env vars | `-e WATSONX_API_KEY=... -e WATSONX_PROJECT_ID=...` |
-
-### Persistent volumes
-
-| Volume | Purpose |
-|--------|---------|
-| `./storage:/app/storage` | SQLite DB + indexed book files |
-| `./books:/app/books` | Intake folder — auto-loaded on startup |
-| `./secrets:/app/secrets` | Secrets / API keys file |
+| 4 | No file — graceful fallback | AI disabled, everything else works |
 
 ---
 
 ## Auto-load books on startup (dev2)
 
-Drop PDF files into the `books/` folder before starting the server — they are automatically registered and indexed.
+Drop PDF files into the `books/` folder before starting — they are automatically registered and indexed. Works with both local Python and Docker.
 
 ```
 book-knowledge-service/
 └── books/
-    └── physics-part1.pdf    ← dropped here, auto-loaded on startup
+    └── physics-part1.pdf    ← auto-registered and indexed on next startup
 ```
 
-**Works with both local Python and Docker.**
-
-- Deduplication by SHA-256 — restarting the server never re-indexes the same file
-- Indexing runs in the background — server is ready immediately
-- Watch the logs for progress:
+- **Deduplication** — restarting never re-indexes the same file (checked by SHA-256)
+- **Non-blocking** — indexing runs in the background; server is ready immediately
+- **Log lines to watch:**
 
 ```
 [autoload] Registered physics-part1.pdf → book_id=abc-123
 [autoload] Indexed physics-part1.pdf (479 pages).
+[autoload] physics-part1.pdf already registered (book_id=abc-123), skipping.   ← on restart
 ```
 
 ---
