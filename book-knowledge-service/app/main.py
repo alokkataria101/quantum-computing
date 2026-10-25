@@ -133,7 +133,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+templates = Jinja2Templates(
+    directory=str(Path(__file__).parent.parent / "templates"),
+    auto_reload=True,  # re-read templates from disk on every request (no restart needed)
+)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(books.router)
