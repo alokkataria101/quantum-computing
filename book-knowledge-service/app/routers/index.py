@@ -13,13 +13,13 @@ from fastapi.responses import StreamingResponse
 from ..config import settings
 from ..database import get_db
 from ..indexer import (
-    upsert_pages, upsert_chapters, upsert_figures, rebuild_fts,
+    upsert_pages, upsert_chapters, rebuild_fts,
     update_book_status, full_text_search,
 )
 from ..chapter_parser import detect_chapters
 from ..jobs import create_job, run_job, update_job
 from ..models import ChapterList, ChapterRecord, PageRecord, JobRecord, JobStatus, JobType, SearchResult, SearchHit
-from ..pdf_processor import extract_pages, extract_pdf_meta, render_page_to_png, render_figure_crop
+from ..pdf_processor import extract_pages, extract_pdf_meta, render_page_to_png, render_page_figures
 from ..storage import book_path, rendered_page_path
 
 router = APIRouter(tags=["indexing"])
@@ -70,12 +70,8 @@ async def start_index(book_id: str):
         await update_job(job_id, progress=0.7, message="Saving pages…")
         await upsert_pages(book_id, pages, chapter_map)
 
-        await update_job(job_id, progress=0.85, message="Building FTS index…")
+        await update_job(job_id, progress=0.9, message="Building FTS index…")
         await rebuild_fts(book_id)
-
-        await update_job(job_id, progress=0.95, message="Indexing figures…")
-        n_figs = await upsert_figures(book_id, path)
-        logger.info("Indexed %d figures for book %s", n_figs, book_id)
 
         await update_book_status(
             book_id, "indexed",
@@ -162,32 +158,31 @@ async def render_page(book_id: str, page_number: int, dpi: int = Query(150, ge=7
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GET /books/{book_id}/figures/{fig_num}/render  – exact figure crop by number
+# GET /books/{book_id}/pages/{page_number}/render/figures  – cropped figure PNG
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.get("/books/{book_id}/figures/{fig_num}/render")
-async def render_figure_by_number(
+@router.get("/books/{book_id}/pages/{page_number}/render/figures")
+async def render_page_figures_endpoint(
     book_id: str,
-    fig_num: str,
+    page_number: int,
     dpi: int = Query(150, ge=72, le=300),
 ):
-    """Render a figure by its number (e.g. '8.10').
-    Looks up the stored bbox in the figures table and returns a cropped PNG.
-    Returns 404 if the figure number is not indexed."""
-    db = await get_db()
-    async with db.execute(
-        "SELECT page, bbox_x0, bbox_y0, bbox_x1, bbox_y1 FROM figures "
-        "WHERE book_id = ? AND fig_num = ?",
-        (book_id, fig_num),
-    ) as cur:
-        row = await cur.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail=f"Figure {fig_num} not found. Re-index the book to detect figures.")
+    """Return a PNG cropped to only the image/figure regions on the page.
+    Falls back to the full-page render if no figures are detected."""
     path = book_path(book_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail="PDF file not found.")
-    bbox = (row["bbox_x0"], row["bbox_y0"], row["bbox_x1"], row["bbox_y1"])
-    png = render_figure_crop(path, bbox, row["page"], dpi=dpi)
+    try:
+        png = render_page_figures(path, page_number, dpi=dpi)
+        if png is None:
+            # No figures on this page — fall back to full-page render
+            cached = rendered_page_path(book_id, page_number)
+            if cached.exists():
+                png = cached.read_bytes()
+            else:
+                png = render_page_to_png(path, page_number, dpi=dpi)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return Response(png, media_type="image/png")
 
 

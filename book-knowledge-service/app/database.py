@@ -113,22 +113,6 @@ async def _create_schema(db: aiosqlite.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_questions_chapter ON questions(chapter_id);
     CREATE INDEX IF NOT EXISTS idx_questions_book ON questions(book_id);
 
-    -- ── Figures ───────────────────────────────────────────────────────────────
-    -- One row per figure caption found in the PDF.
-    -- bbox_* are in PDF points (pts), matching the coordinate space of fitz.Rect.
-    CREATE TABLE IF NOT EXISTS figures (
-        figure_id   TEXT PRIMARY KEY,   -- book_id + '_' + fig_num  e.g. "abc123_8.10"
-        book_id     TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
-        fig_num     TEXT NOT NULL,      -- normalised label, e.g. "8.10" or "3.1"
-        page        INTEGER NOT NULL,   -- 1-based page number
-        bbox_x0     REAL NOT NULL,      -- crop rect in PDF pts
-        bbox_y0     REAL NOT NULL,
-        bbox_x1     REAL NOT NULL,
-        bbox_y1     REAL NOT NULL
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_figures_book_num ON figures(book_id, fig_num);
-    CREATE INDEX IF NOT EXISTS idx_figures_book ON figures(book_id);
-
     -- ── Jobs ──────────────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS jobs (
         job_id      TEXT PRIMARY KEY,

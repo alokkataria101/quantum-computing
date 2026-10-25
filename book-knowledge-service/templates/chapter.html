@@ -307,12 +307,7 @@ function renderQuestions() {
     return;
   }
   list.innerHTML = qs.map((q, i) => {
-    // Extract explicit figure number from question text e.g. "figure (8.10)" → "8.10"
-    const figMatch = q.question_text.match(/\bfig(?:ure)?\.?\s*\(?(\d+[\.\-]\d+[a-z]?)\)?/i);
-    const figNum = figMatch ? figMatch[1].replace('-','.') : null;
-    const imgSrc = figNum
-      ? `/books/${BOOK_ID}/figures/${figNum}/render`   // exact figure crop
-      : null;
+    const hasFigRef = /\b(figure|fig\.?|diagram|graph|table|chart|image|shown|following|below|above)\b/i.test(q.question_text);
     return `
     <div class="question-card">
       <div class="q-type">${q.question_type.replace(/_/g,' ')}</div>
@@ -323,9 +318,9 @@ function renderQuestions() {
       <div class="q-pages">p.${q.page_start}${q.page_end!==q.page_start?'–'+q.page_end:''}
         <a href="#" style="color:#4a9edd;margin-left:6px" onclick="event.preventDefault();goToPage(${q.page_start})">Go to page</a>
       </div>
-      ${imgSrc ? `<img class="gq-img" src="${imgSrc}"
-           alt="Figure ${figNum}" title="Figure ${figNum} — click to navigate"
-           onclick="goToPage(${q.page_start})" style="max-height:200px;width:auto;border-radius:4px;border:1px solid #e5e7eb"/>` : ''}
+      ${hasFigRef ? `<img class="gq-img" src="/books/${BOOK_ID}/pages/${q.page_start}/render"
+           alt="Page ${q.page_start}" title="Page ${q.page_start} — click to navigate"
+           onclick="goToPage(${q.page_start})" style="max-height:160px;width:auto;opacity:.9"/>` : ''}
     </div>`}).join('');
 }
 function toggleSol(btn) {
@@ -444,12 +439,9 @@ function renderBatch() {
     `Batch ${genBatchIdx+1} · Q${genBatchIdx*count+1}–${genBatchIdx*count+qs.length}`;
 
   list.innerHTML = qs.map((q, i) => {
+    // page_start is always set by the server (falls back to chapter start page)
     const imgPage = q.page_start || PAGE_START;
-    const figMatch = q.question.match(/\bfig(?:ure)?\.?\s*\(?(\d+[\.\-]\d+[a-z]?)\)?/i);
-    const figNum = figMatch ? figMatch[1].replace('-','.') : null;
-    const imgSrc = figNum
-      ? `/books/${BOOK_ID}/figures/${figNum}/render`
-      : null;
+    const hasFigRef = /\b(figure|fig\.?|diagram|graph|table|chart|image|shown|following|below|above)\b/i.test(q.question);
     return `
     <div class="gen-question">
       <div class="gq-type">${q.type||'question'}</div>
@@ -458,9 +450,9 @@ function renderBatch() {
       ${q.answer ? `
         <span class="gq-toggle" onclick="toggleGen(this)">▶ Show answer</span>
         <div class="gq-answer">${escHtml(q.answer)}${q.hint?'<br><em style="color:#666">Hint: '+escHtml(q.hint)+'</em>':''}</div>` : ''}
-      ${imgSrc ? `<img class="gq-img" src="${imgSrc}"
-          alt="Figure ${figNum}" title="Figure ${figNum} — click to navigate"
-          onclick="goToPage(${imgPage})" style="max-height:200px;width:auto;border-radius:4px;border:1px solid #e5e7eb"/>` : ''}
+      ${hasFigRef ? `<img class="gq-img" src="/books/${BOOK_ID}/pages/${imgPage}/render"
+          alt="Page ${imgPage}" title="Page ${imgPage} — click to navigate"
+          onclick="goToPage(${imgPage})" style="max-height:160px;width:auto;opacity:.9"/>` : ''}
     </div>`}).join('');
 }
 
