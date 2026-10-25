@@ -218,6 +218,102 @@ async def viewer(
     )
 
 
+# ── UI — Library home page ────────────────────────────────────────────────────
+
+@app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
+async def ui_home(request: Request):
+    return templates.TemplateResponse(request=request, name="index.html", context={})
+
+
+# ── UI — Book detail (chapters list) ─────────────────────────────────────────
+
+@app.get("/ui/books/{book_id}", response_class=HTMLResponse, include_in_schema=False)
+async def ui_book(request: Request, book_id: str):
+    db = await get_db()
+
+    async with db.execute("SELECT * FROM books WHERE book_id = ?", (book_id,)) as cur:
+        brow = await cur.fetchone()
+    if not brow:
+        raise HTTPException(status_code=404, detail="Book not found.")
+
+    async with db.execute(
+        "SELECT * FROM chapters WHERE book_id = ? ORDER BY number", (book_id,)
+    ) as cur:
+        ch_rows = await cur.fetchall()
+
+    from .routers.books import _row_to_book
+    from .models import ChapterRecord
+
+    book = _row_to_book(brow)
+    chapters = [
+        ChapterRecord(
+            chapter_id=r["chapter_id"], book_id=r["book_id"],
+            number=r["number"], title=r["title"],
+            page_start=r["page_start"], page_end=r["page_end"],
+            confidence=r["confidence"], source=r["source"],
+        )
+        for r in ch_rows
+    ]
+
+    return templates.TemplateResponse(
+        request=request, name="book.html",
+        context={"book": book, "chapters": chapters},
+    )
+
+
+# ── UI — Chapter page (reader + questions + AI ask) ───────────────────────────
+
+@app.get("/ui/books/{book_id}/chapters/{chapter_id}", response_class=HTMLResponse, include_in_schema=False)
+async def ui_chapter(request: Request, book_id: str, chapter_id: str):
+    db = await get_db()
+
+    async with db.execute("SELECT * FROM books WHERE book_id = ?", (book_id,)) as cur:
+        brow = await cur.fetchone()
+    if not brow:
+        raise HTTPException(status_code=404, detail="Book not found.")
+
+    async with db.execute(
+        "SELECT * FROM chapters WHERE chapter_id = ? AND book_id = ?", (chapter_id, book_id)
+    ) as cur:
+        crow = await cur.fetchone()
+    if not crow:
+        raise HTTPException(status_code=404, detail="Chapter not found.")
+
+    async with db.execute(
+        "SELECT * FROM chapters WHERE book_id = ? ORDER BY number", (book_id,)
+    ) as cur:
+        all_ch = await cur.fetchall()
+
+    from .routers.books import _row_to_book
+    from .models import ChapterRecord
+
+    book = _row_to_book(brow)
+
+    def to_ch(r):
+        return ChapterRecord(
+            chapter_id=r["chapter_id"], book_id=r["book_id"],
+            number=r["number"], title=r["title"],
+            page_start=r["page_start"], page_end=r["page_end"],
+            confidence=r["confidence"], source=r["source"],
+        )
+
+    chapter    = to_ch(crow)
+    chapters   = [to_ch(r) for r in all_ch]
+    idx        = next((i for i, c in enumerate(chapters) if c.chapter_id == chapter_id), None)
+    prev_chapter = chapters[idx - 1] if idx and idx > 0 else None
+    next_chapter = chapters[idx + 1] if idx is not None and idx < len(chapters) - 1 else None
+
+    return templates.TemplateResponse(
+        request=request, name="chapter.html",
+        context={
+            "book": book,
+            "chapter": chapter,
+            "prev_chapter": prev_chapter,
+            "next_chapter": next_chapter,
+        },
+    )
+
+
 # ── Root / health ─────────────────────────────────────────────────────────────
 
 @app.get("/", include_in_schema=False)
@@ -226,6 +322,7 @@ async def root():
         "service": "book-knowledge-service",
         "version": "1.0.0",
         "docs": "/docs",
+        "ui": "/ui",
         "redoc": "/redoc",
     }
 

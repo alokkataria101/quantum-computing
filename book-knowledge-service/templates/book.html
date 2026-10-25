@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>{{ book.title }} — Chapters</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:#f0f2f5;color:#1f2328;min-height:100vh}
+header{background:#1e2a3a;color:#e0e6f0;padding:14px 32px;display:flex;align-items:center;gap:16px}
+header a{color:#8fa0b0;text-decoration:none;font-size:.88em}.header a:hover{color:#fff}
+header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
+.container{max-width:900px;margin:28px auto;padding:0 24px}
+
+/* Book hero */
+.book-hero{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:24px 28px;margin-bottom:24px;display:flex;gap:24px;align-items:flex-start}
+.book-info{flex:1}
+.book-info h2{margin:0 0 6px;font-size:1.2em}
+.book-info .meta{color:#6b7280;font-size:.88em;margin-bottom:12px}
+.book-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.badge{font-size:.78em;padding:3px 10px;border-radius:12px;font-weight:500}
+.badge-indexed{background:#d1fae5;color:#065f46}
+.badge-indexing{background:#fef3c7;color:#92400e}
+.badge-uploaded{background:#e5e7eb;color:#374151}
+.badge-error{background:#fee2e2;color:#991b1b}
+.btn{display:inline-block;padding:7px 18px;border-radius:6px;font-size:.85em;font-weight:500;text-decoration:none;border:none;cursor:pointer}
+.btn-primary{background:#4a9edd;color:#fff}.btn-primary:hover{background:#2980b9}
+.btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}.btn-secondary:hover{background:#e5e7eb}
+.btn-sm{padding:4px 12px;font-size:.8em}
+
+/* Progress */
+#index-status{font-size:.85em;color:#4a9edd;margin-top:8px;min-height:18px}
+.progress{height:5px;background:#e5e7eb;border-radius:4px;margin-top:6px;display:none;max-width:300px}
+.progress-bar{height:5px;background:#4a9edd;border-radius:4px;transition:width .4s}
+
+/* Stats */
+.stats{display:flex;gap:20px;flex-wrap:wrap;margin-top:10px}
+.stat{font-size:.82em;color:#6b7280}
+.stat strong{color:#1f2328}
+
+/* Search bar */
+.search-bar{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:20px;display:flex;gap:10px}
+.search-bar input{flex:1;border:1px solid #d1d5db;border-radius:6px;padding:7px 12px;font-size:.9em}
+.search-bar button{padding:7px 16px;background:#4a9edd;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.88em}
+#search-results{margin-top:12px;display:none}
+.search-hit{padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;background:#fff;cursor:pointer;font-size:.85em}
+.search-hit:hover{background:#f0f7ff;border-color:#4a9edd}
+.search-hit .snippet b{background:#fef9c3}
+.search-hit .ref{color:#6b7280;font-size:.78em;margin-top:2px}
+
+/* Chapter list */
+.chapters-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.chapters-header h3{margin:0;font-size:1em;font-weight:600}
+.chapter-list{display:flex;flex-direction:column;gap:10px}
+.chapter-card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:16px;transition:box-shadow .15s}
+.chapter-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.08);border-color:#b8d0e8}
+.ch-num{width:36px;height:36px;background:#e8f0fe;color:#3b5bdb;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.88em;flex-shrink:0}
+.ch-info{flex:1}
+.ch-title{font-weight:600;font-size:.92em;margin-bottom:3px}
+.ch-meta{font-size:.78em;color:#6b7280}
+.ch-actions{display:flex;gap:8px;flex-shrink:0}
+.ch-badge{font-size:.72em;padding:2px 8px;border-radius:10px}
+.ch-badge-q{background:#e0f2fe;color:#0369a1}
+.empty{text-align:center;padding:40px;color:#9ca3af;font-size:.9em}
+</style>
+</head>
+<body>
+<header>
+  <h1>
+    <a href="/ui" style="color:#8fa0b0;text-decoration:none">📚 Library</a>
+    <span style="color:#4a5568;margin:0 8px">›</span>
+    {{ book.title[:50] }}{% if book.title|length > 50 %}…{% endif %}
+  </h1>
+  <a class="btn btn-sm" href="/viewer/{{ book.book_id }}?page=1" style="background:#2c3e50;color:#e0e6f0;border-radius:5px;padding:5px 12px;font-size:.82em;text-decoration:none">📖 Open Reader</a>
+</header>
+
+<div class="container">
+
+  <!-- Book hero -->
+  <div class="book-hero">
+    <div class="book-info">
+      <h2>{{ book.title }}</h2>
+      <div class="meta">{{ book.author or "Unknown author" }}</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span class="badge badge-{{ book.status }}">{{ book.status }}</span>
+        <span class="stat"><strong>{{ book.total_pages or '?' }}</strong> pages</span>
+        <span class="stat"><strong>{{ chapters|length }}</strong> chapters</span>
+      </div>
+      <div class="book-actions">
+        <a class="btn btn-primary" href="/viewer/{{ book.book_id }}?page=1">📖 Read Book</a>
+        <button class="btn btn-secondary" id="btn-reindex" onclick="reindex()">🔄 Re-index</button>
+        <button class="btn btn-secondary" onclick="extractAll()">⚙ Extract All Questions</button>
+      </div>
+      <div id="index-status"></div>
+      <div class="progress" id="progress-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="search-bar">
+    <input type="search" id="search-input" placeholder="Search inside this book…" onkeydown="if(event.key==='Enter')doSearch()"/>
+    <button onclick="doSearch()">🔍 Search</button>
+  </div>
+  <div id="search-results"></div>
+
+  <!-- Chapters -->
+  <div class="chapters-header">
+    <h3>Chapters</h3>
+  </div>
+  <div class="chapter-list" id="chapter-list">
+    {% if chapters %}
+      {% for ch in chapters %}
+      <div class="chapter-card">
+        <div class="ch-num">{{ ch.number }}</div>
+        <div class="ch-info">
+          <div class="ch-title">{{ ch.title }}</div>
+          <div class="ch-meta">Pages {{ ch.page_start }}–{{ ch.page_end }}
+            {% if ch.question_count is defined and ch.question_count %} · {{ ch.question_count }} questions{% endif %}
+          </div>
+        </div>
+        <div class="ch-actions">
+          <a class="btn btn-primary btn-sm" href="/ui/books/{{ book.book_id }}/chapters/{{ ch.chapter_id }}">Open</a>
+          <a class="btn btn-secondary btn-sm" href="/viewer/{{ book.book_id }}?page={{ ch.page_start }}">Read</a>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">No chapters found. Index the book first.</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+const BOOK_ID = "{{ book.book_id }}";
+
+async function reindex() {
+  const btn = document.getElementById('btn-reindex');
+  btn.disabled = true; btn.textContent = 'Indexing…';
+  const status = document.getElementById('index-status');
+  const bar = document.getElementById('progress-bar');
+  const wrap = document.getElementById('progress-wrap');
+  wrap.style.display = 'block'; bar.style.width = '20%';
+  status.textContent = 'Starting indexing…';
+  const res = await fetch(`/books/${BOOK_ID}/index`, {method:'POST'});
+  const job = await res.json();
+  bar.style.width = '40%';
+  pollJob(job.job_id, bar, wrap, status, btn);
+}
+
+async function pollJob(jobId, bar, wrap, status, btn) {
+  const interval = setInterval(async () => {
+    const r = await fetch(`/jobs/${jobId}`);
+    const j = await r.json();
+    bar.style.width = (j.progress * 100) + '%';
+    status.textContent = j.message || j.status;
+    if (j.status === 'done') {
+      clearInterval(interval);
+      status.textContent = '✓ Indexing complete.';
+      btn.disabled = false; btn.textContent = '🔄 Re-index';
+      setTimeout(() => location.reload(), 1500);
+    } else if (j.status === 'failed') {
+      clearInterval(interval);
+      status.textContent = '✗ Indexing failed: ' + (j.error || '');
+      btn.disabled = false; btn.textContent = '🔄 Re-index';
+    }
+  }, 1500);
+}
+
+async function extractAll() {
+  const chapters = document.querySelectorAll('.chapter-card');
+  const status = document.getElementById('index-status');
+  status.textContent = 'Extracting questions from all chapters…';
+  // fire-and-forget all extract jobs
+  const res = await fetch(`/books/${BOOK_ID}/chapters`);
+  const data = await res.json();
+  for (const ch of data.chapters) {
+    await fetch(`/books/${BOOK_ID}/chapters/${ch.chapter_id}/extract`, {method:'POST'});
+    await new Promise(r => setTimeout(r, 300));
+  }
+  status.textContent = '✓ Extraction started for all chapters. Refresh in a moment.';
+}
+
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) return;
+  const res = await fetch(`/books/${BOOK_ID}/search?q=${encodeURIComponent(q)}&limit=20`);
+  const data = await res.json();
+  const panel = document.getElementById('search-results');
+  panel.style.display = 'block';
+  if (!data.hits || data.hits.length === 0) {
+    panel.innerHTML = '<div class="empty" style="padding:16px">No results found.</div>'; return;
+  }
+  panel.innerHTML = data.hits.map(h => `
+    <div class="search-hit" onclick="window.open('/viewer/${BOOK_ID}?page=${h.page_number}','_blank')">
+      <div>${h.snippet}</div>
+      <div class="ref">Page ${h.page_number}${h.chapter_id ? '' : ''}</div>
+    </div>`).join('');
+}
+</script>
+</body>
+</html>
