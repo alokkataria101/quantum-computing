@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Book Knowledge Service</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:#f0f2f5;color:#1f2328;min-height:100vh}
+header{background:#1e2a3a;color:#e0e6f0;padding:16px 32px;display:flex;align-items:center;gap:16px}
+header h1{margin:0;font-size:1.3em;font-weight:600}
+header span{font-size:.85em;color:#8fa0b0}
+.container{max-width:960px;margin:32px auto;padding:0 24px}
+h2{font-size:1.1em;font-weight:600;margin:0 0 16px;color:#1f2328}
+
+/* Upload card */
+.upload-card{background:#fff;border:2px dashed #c0c8d0;border-radius:10px;padding:28px 32px;margin-bottom:32px;text-align:center}
+.upload-card:hover{border-color:#4a9edd}
+.upload-card input[type=file]{display:none}
+.upload-label{display:inline-block;padding:10px 24px;background:#4a9edd;color:#fff;border-radius:6px;cursor:pointer;font-size:.9em;font-weight:500}
+.upload-label:hover{background:#2980b9}
+.upload-card p{margin:8px 0 0;font-size:.85em;color:#6b7280}
+#upload-status{margin-top:12px;font-size:.88em;min-height:20px}
+.progress{height:6px;background:#e5e7eb;border-radius:4px;margin-top:8px;display:none}
+.progress-bar{height:6px;background:#4a9edd;border-radius:4px;width:0;transition:width .3s}
+
+/* Book grid */
+.books-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.book-card{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .15s}
+.book-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.book-title{font-weight:600;font-size:.95em;color:#1f2328;text-decoration:none;line-height:1.3}
+.book-title:hover{color:#4a9edd}
+.book-author{font-size:.82em;color:#6b7280}
+.book-meta{display:flex;gap:10px;flex-wrap:wrap}
+.badge{font-size:.75em;padding:2px 8px;border-radius:12px;font-weight:500}
+.badge-indexed{background:#d1fae5;color:#065f46}
+.badge-indexing{background:#fef3c7;color:#92400e}
+.badge-uploaded{background:#e5e7eb;color:#374151}
+.badge-error{background:#fee2e2;color:#991b1b}
+.book-actions{display:flex;gap:8px;margin-top:4px}
+.btn{display:inline-block;padding:5px 14px;border-radius:5px;font-size:.82em;font-weight:500;text-decoration:none;border:none;cursor:pointer}
+.btn-primary{background:#4a9edd;color:#fff}.btn-primary:hover{background:#2980b9}
+.btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}.btn-secondary:hover{background:#e5e7eb}
+.empty{text-align:center;padding:48px;color:#9ca3af;font-size:.95em}
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 Book Knowledge Service</h1>
+  <span>Upload · Index · Read · Ask</span>
+</header>
+
+<div class="container">
+
+  <!-- Upload -->
+  <div class="upload-card" id="drop-zone">
+    <label class="upload-label" for="file-input">＋ Upload a PDF book</label>
+    <input type="file" id="file-input" accept=".pdf" onchange="uploadFile(this.files[0])"/>
+    <p>or drop a PDF here · max 100 MB</p>
+    <div id="upload-status"></div>
+    <div class="progress" id="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+  </div>
+
+  <!-- Book list -->
+  <h2>Your Books <span id="book-count" style="font-weight:400;color:#6b7280"></span></h2>
+  <div class="books-grid" id="books-grid">
+    <div class="empty" id="empty-msg">Loading…</div>
+  </div>
+
+</div>
+
+<script>
+async function loadBooks() {
+  const res = await fetch('/books');
+  const data = await res.json();
+  const grid = document.getElementById('books-grid');
+  const count = document.getElementById('book-count');
+  grid.innerHTML = '';
+  if (!data.books || data.books.length === 0) {
+    grid.innerHTML = '<div class="empty">No books yet — upload a PDF to get started.</div>';
+    return;
+  }
+  count.textContent = `(${data.books.length})`;
+  data.books.forEach(b => {
+    const statusClass = {indexed:'badge-indexed',indexing:'badge-indexing',uploaded:'badge-uploaded',error:'badge-error'}[b.status] || 'badge-uploaded';
+    const canOpen = b.status === 'indexed';
+    grid.innerHTML += `
+      <div class="book-card">
+        <a class="book-title" href="/ui/books/${b.book_id}">${b.title || b.filename}</a>
+        <div class="book-author">${b.author || '—'}</div>
+        <div class="book-meta">
+          <span class="badge ${statusClass}">${b.status}</span>
+          ${b.total_pages ? `<span style="font-size:.78em;color:#6b7280">${b.total_pages} pages</span>` : ''}
+        </div>
+        <div class="book-actions">
+          ${canOpen ? `<a class="btn btn-primary" href="/ui/books/${b.book_id}">Open</a>` : ''}
+          ${b.status === 'uploaded' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}', this)">Index</button>` : ''}
+          ${b.status === 'error' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}', this)">Retry Index</button>` : ''}
+        </div>
+      </div>`;
+  });
+}
+
+async function indexBook(bookId, btn) {
+  btn.disabled = true; btn.textContent = 'Indexing…';
+  await fetch(`/books/${bookId}/index`, {method:'POST'});
+  setTimeout(loadBooks, 2000);
+}
+
+async function uploadFile(file) {
+  if (!file) return;
+  const status = document.getElementById('upload-status');
+  const bar = document.getElementById('progress-bar');
+  const wrap = document.getElementById('progress-wrap');
+  status.textContent = `Uploading ${file.name}…`;
+  wrap.style.display = 'block'; bar.style.width = '30%';
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const res = await fetch('/books', {method:'POST', body:fd});
+    bar.style.width = '70%';
+    if (res.status === 409) { status.textContent = '⚠ Book already uploaded.'; bar.style.width='0'; return; }
+    if (!res.ok) { status.textContent = '✗ Upload failed.'; bar.style.width='0'; return; }
+    const book = await res.json();
+    bar.style.width = '85%';
+    status.textContent = `Indexing ${book.title || file.name}…`;
+    await fetch(`/books/${book.book_id}/index`, {method:'POST'});
+    bar.style.width = '100%';
+    status.textContent = `✓ ${book.title || file.name} uploaded and indexing started.`;
+    setTimeout(() => { wrap.style.display='none'; bar.style.width='0'; status.textContent=''; loadBooks(); }, 3000);
+  } catch(e) { status.textContent = '✗ Error: ' + e.message; }
+}
+
+// Drag-and-drop
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor='#4a9edd'; });
+dz.addEventListener('dragleave', () => { dz.style.borderColor=''; });
+dz.addEventListener('drop', e => { e.preventDefault(); dz.style.borderColor=''; uploadFile(e.dataTransfer.files[0]); });
+
+loadBooks();
+setInterval(loadBooks, 8000); // auto-refresh for indexing status
+</script>
+</body>
+</html>

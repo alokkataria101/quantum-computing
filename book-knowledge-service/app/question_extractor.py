@@ -5,59 +5,56 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from dataclasses import dataclass
 from typing import Optional
 
 from .models import ChapterRecord, QuestionRecord, QuestionType
+from .pdf_processor import normalize_pdf_text
 
 logger = logging.getLogger(__name__)
 
-# ── Section-header patterns ────────────────────────────────────────────────────
-_SECTION_HEADERS = {
-    QuestionType.worked_example:   re.compile(r"WORKED\s+OUT\s+EXAMPLES?", re.I),
-    QuestionType.short_answer:     re.compile(r"QUESTIONS?\s+FOR\s+SHORT\s+ANSWER", re.I),
-    QuestionType.objective_1:      re.compile(r"OBJECTIVE\s+[I1](?!\s*I)", re.I),
-    QuestionType.objective_2:      re.compile(r"OBJECTIVE\s+II", re.I),
-    QuestionType.exercise:         re.compile(r"^EXERCISES?$", re.I | re.MULTILINE),
+# ── Page marker injected into combined text ───────────────────────────────────
+_PAGE_MARKER = "\x00PAGE:{}\x00"          # null-byte delimited, never in PDF text
+_PAGE_MARKER_RE = re.compile(r"\x00PAGE:(\d+)\x00")
+
+# ── Section-header patterns ───────────────────────────────────────────────────
+_SECTION_HEADERS: dict[QuestionType, re.Pattern] = {
+    QuestionType.worked_example: re.compile(r"WORKED\s+OUT\s+EXAMPLES?", re.I),
+    QuestionType.short_answer:   re.compile(r"QUESTIONS?\s+FOR\s+SHORT\s+ANSWER", re.I),
+    QuestionType.objective_1:    re.compile(r"OBJECTIVE\s+[I1](?!\s*I)", re.I),
+    QuestionType.objective_2:    re.compile(r"OBJECTIVE\s+II", re.I),
+    QuestionType.exercise:       re.compile(r"(?:^|\n)\s*EXERCISES?\s*\n", re.I),
 }
 
-# ── In-text example patterns ──────────────────────────────────────────────────
-_INLINE_EXAMPLE = re.compile(
-    r"(?:Example|Solved\s+Example)\s+(\d+[\.\d]*)",
+# All section headers as a single alternation — used to bound sections
+_ANY_SECTION_HDR = re.compile(
+    r"(?:WORKED\s+OUT\s+EXAMPLES?|QUESTIONS?\s+FOR\s+SHORT\s+ANSWER"
+    r"|OBJECTIVE\s+(?:I{1,2}|1|2)|EXERCISES?)\s*\n",
     re.I,
 )
 
-# ── Numbered item patterns (for exercises / objectives) ──────────────────────
+# ── In-text example patterns ──────────────────────────────────────────────────
+_INLINE_EXAMPLE = re.compile(
+    r"(?:^|\n)\s*(?:Solved\s+)?Example\s+(\d+[\.\d]*)\b",
+    re.I,
+)
+
+# ── Numbered item: "1. text"  or  "1.  text" ─────────────────────────────────
+# Captures number and everything up to the next numbered item or section header
 _NUMBERED_ITEM = re.compile(
-    r"(?:^|\n)\s*(\d+)\.\s+(.{10,500}?)(?=\n\s*\d+\.\s|\Z)",
-    re.S,
+    r"(?:^|\n)\s*(\d+)\.\s{1,4}(.+?)(?=\n\s*\d+\.\s|\Z|"
+    r"WORKED\s+OUT|QUESTIONS?\s+FOR|OBJECTIVE\s+[I12]|EXERCISES?\s*\n)",
+    re.S | re.I,
 )
 
 # ── Solution / Answer markers ─────────────────────────────────────────────────
-_SOLUTION_HEADER = re.compile(r"Solution\s*:", re.I)
-_ANSWER_HEADER   = re.compile(r"(?:Answer|Ans)\.?\s*:", re.I)
-
-
-@dataclass
-class _Block:
-    q_type: QuestionType
-    page_start: int
-    page_end: int
-    text: str
-
-
-def _assign_chapter_to_pages(
-    chapter: ChapterRecord,
-    pages: list[dict],   # list of {"page_number": int, "text": str}
-) -> list[dict]:
-    return [p for p in pages if chapter.page_start <= p["page_number"] <= chapter.page_end]
+_SOLUTION_HEADER = re.compile(r"\bSolution\s*:", re.I)
+_ANSWER_HEADER   = re.compile(r"\b(?:Answer|Ans)\.?\s*:", re.I)
 
 
 def _split_solution(text: str) -> tuple[str, Optional[str], Optional[str]]:
     """Split a block into (question_text, solution_text, answer_text)."""
     sol_m = _SOLUTION_HEADER.search(text)
     ans_m = _ANSWER_HEADER.search(text)
-
     if sol_m:
         q = text[: sol_m.start()].strip()
         rest = text[sol_m.end():]
@@ -68,13 +65,22 @@ def _split_solution(text: str) -> tuple[str, Optional[str], Optional[str]]:
             sol = rest.strip()
             ans = None
         return q, sol, ans
-
     if ans_m:
-        q = text[: ans_m.start()].strip()
-        ans = text[ans_m.end():].strip()
-        return q, None, ans
-
+        return text[: ans_m.start()].strip(), None, text[ans_m.end():].strip()
     return text.strip(), None, None
+
+
+def _page_at(combined: str, pos: int, default: int) -> int:
+    """Return the page number of the most recent page marker before `pos`."""
+    last = default
+    for m in _PAGE_MARKER_RE.finditer(combined, 0, pos):
+        last = int(m.group(1))
+    return last
+
+
+def _strip_markers(text: str) -> str:
+    """Remove page markers from a text snippet."""
+    return _PAGE_MARKER_RE.sub("", text)
 
 
 def extract_questions_from_chapter(
@@ -83,78 +89,83 @@ def extract_questions_from_chapter(
     pages: list[dict],   # [{"page_number": int, "text": str}]
 ) -> list[QuestionRecord]:
     """
-    Extract all question/example types from the chapter's pages.
-    Uses pattern matching on extracted text.
+    Extract all question/example types from the chapter pages.
+
+    Builds one combined string with embedded page markers so that
+    sections and questions that span page boundaries are handled correctly.
     """
-    chapter_pages = _assign_chapter_to_pages(chapter, pages)
+    chapter_pages = sorted(
+        [p for p in pages if chapter.page_start <= p["page_number"] <= chapter.page_end],
+        key=lambda p: p["page_number"],
+    )
     if not chapter_pages:
         return []
 
-    # Concatenate chapter text with page markers
-    combined_blocks: list[tuple[int, str]] = []  # (page_number, text)
+    # Build one combined string with page markers
+    parts: list[str] = []
     for p in chapter_pages:
-        combined_blocks.append((p["page_number"], p["text"]))
+        parts.append(_PAGE_MARKER.format(p["page_number"]))
+        parts.append(normalize_pdf_text(p["text"]))
+    combined = "\n".join(parts)
+    first_page = chapter_pages[0]["page_number"]
 
     results: list[QuestionRecord] = []
 
     # ── 1. In-text numbered examples ─────────────────────────────────────────
-    for page_num, text in combined_blocks:
-        for m in _INLINE_EXAMPLE.finditer(text):
-            num = m.group(1)
-            # Grab the text until the next example or section header (~500 chars)
-            start = m.start()
-            snippet = text[start: start + 800].strip()
-            q_text, sol, ans = _split_solution(snippet)
-            results.append(QuestionRecord(
-                question_id=str(uuid.uuid4()),
-                book_id=book_id,
-                chapter_id=chapter.chapter_id,
-                chapter_number=chapter.number,
-                question_type=QuestionType.example,
-                question_number=num,
-                question_text=q_text[:1000],
-                solution_text=sol,
-                answer_text=ans,
-                page_start=page_num,
-                page_end=page_num,
-                confidence=0.85,
-                extraction_method="pattern",
-            ))
+    for m in _INLINE_EXAMPLE.finditer(combined):
+        num = m.group(1)
+        start = m.start()
+        snippet_raw = combined[start: start + 1000]
+        snippet = _strip_markers(snippet_raw)
+        q_text, sol, ans = _split_solution(snippet)
+        if not q_text or len(q_text) < 5:
+            continue
+        pg = _page_at(combined, start, first_page)
+        results.append(QuestionRecord(
+            question_id=str(uuid.uuid4()),
+            book_id=book_id,
+            chapter_id=chapter.chapter_id,
+            chapter_number=chapter.number,
+            question_type=QuestionType.example,
+            question_number=num,
+            question_text=q_text[:1200],
+            solution_text=sol,
+            answer_text=ans,
+            page_start=pg,
+            page_end=pg,
+            confidence=0.85,
+            extraction_method="pattern",
+        ))
 
-    # ── 2. Worked Out Examples section ────────────────────────────────────────
-    results += _extract_section(
-        book_id, chapter, combined_blocks,
-        _SECTION_HEADERS[QuestionType.worked_example],
+    # ── 2–6. Named sections ───────────────────────────────────────────────────
+    _SECTION_ORDER = [
         QuestionType.worked_example,
-    )
-
-    # ── 3. Questions for Short Answer ─────────────────────────────────────────
-    results += _extract_section(
-        book_id, chapter, combined_blocks,
-        _SECTION_HEADERS[QuestionType.short_answer],
         QuestionType.short_answer,
-    )
-
-    # ── 4. Objective I ────────────────────────────────────────────────────────
-    results += _extract_section(
-        book_id, chapter, combined_blocks,
-        _SECTION_HEADERS[QuestionType.objective_1],
         QuestionType.objective_1,
-    )
-
-    # ── 5. Objective II ───────────────────────────────────────────────────────
-    results += _extract_section(
-        book_id, chapter, combined_blocks,
-        _SECTION_HEADERS[QuestionType.objective_2],
         QuestionType.objective_2,
-    )
-
-    # ── 6. Exercises ──────────────────────────────────────────────────────────
-    results += _extract_section(
-        book_id, chapter, combined_blocks,
-        _SECTION_HEADERS[QuestionType.exercise],
         QuestionType.exercise,
-    )
+    ]
+
+    for q_type in _SECTION_ORDER:
+        results += _extract_section(book_id, chapter, combined, first_page, q_type)
+
+    # Sort by page then question number (numeric where possible)
+    def _sort_key(q: QuestionRecord):
+        try:
+            n = int(q.question_number or "0")
+        except ValueError:
+            n = 0
+        type_order = {
+            QuestionType.example: 0,
+            QuestionType.worked_example: 1,
+            QuestionType.short_answer: 2,
+            QuestionType.objective_1: 3,
+            QuestionType.objective_2: 4,
+            QuestionType.exercise: 5,
+        }
+        return (q.page_start, type_order.get(q.question_type, 9), n)
+
+    results.sort(key=_sort_key)
 
     logger.info(
         "Extracted %d items from chapter %s (%s)",
@@ -166,48 +177,56 @@ def extract_questions_from_chapter(
 def _extract_section(
     book_id: str,
     chapter: ChapterRecord,
-    blocks: list[tuple[int, str]],
-    header_pattern: re.Pattern,
+    combined: str,
+    first_page: int,
     q_type: QuestionType,
 ) -> list[QuestionRecord]:
-    """Find the section header and extract numbered items that follow it."""
-    results: list[QuestionRecord] = []
+    """
+    Find the section header in the combined chapter text and extract
+    all numbered items that follow it, up to the next section header.
+    Page numbers are derived from the embedded page markers.
+    """
+    header_pattern = _SECTION_HEADERS[q_type]
+    hm = header_pattern.search(combined)
+    if not hm:
+        return []
 
-    for page_num, text in blocks:
-        hm = header_pattern.search(text)
-        if not hm:
+    section_start = hm.end()
+
+    # Bound section by the next section header
+    next_hm = _ANY_SECTION_HDR.search(combined, section_start)
+    section_end = next_hm.start() if next_hm else len(combined)
+    section_text = combined[section_start:section_end]
+
+    results: list[QuestionRecord] = []
+    for m in _NUMBERED_ITEM.finditer(section_text):
+        num = m.group(1)
+        item_raw = m.group(2).strip()
+        item_text = _strip_markers(item_raw)
+        if len(item_text) < 10:
+            continue
+        q_text, sol, ans = _split_solution(item_text)
+        if not q_text or len(q_text) < 5:
             continue
 
-        section_text = text[hm.end():]
+        # Page number = most recent marker before this match in the full combined string
+        abs_pos = section_start + m.start()
+        pg = _page_at(combined, abs_pos, first_page)
 
-        # Try next section header to bound the section
-        next_sec = re.search(
-            r"\n(?:OBJECTIVE|EXERCISES?|QUESTIONS?\s+FOR|WORKED\s+OUT)",
-            section_text, re.I,
-        )
-        if next_sec:
-            section_text = section_text[: next_sec.start()]
-
-        for m in _NUMBERED_ITEM.finditer(section_text):
-            num = m.group(1)
-            item_text = m.group(2).strip()
-            if len(item_text) < 10:
-                continue
-            q_text, sol, ans = _split_solution(item_text)
-            results.append(QuestionRecord(
-                question_id=str(uuid.uuid4()),
-                book_id=book_id,
-                chapter_id=chapter.chapter_id,
-                chapter_number=chapter.number,
-                question_type=q_type,
-                question_number=num,
-                question_text=q_text[:1500],
-                solution_text=sol,
-                answer_text=ans,
-                page_start=page_num,
-                page_end=page_num,
-                confidence=0.80,
-                extraction_method="pattern",
-            ))
+        results.append(QuestionRecord(
+            question_id=str(uuid.uuid4()),
+            book_id=book_id,
+            chapter_id=chapter.chapter_id,
+            chapter_number=chapter.number,
+            question_type=q_type,
+            question_number=num,
+            question_text=q_text[:1500],
+            solution_text=sol,
+            answer_text=ans,
+            page_start=pg,
+            page_end=pg,
+            confidence=0.80,
+            extraction_method="pattern",
+        ))
 
     return results

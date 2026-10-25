@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>{{ chapter.title }} — {{ book.title }}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:system-ui,sans-serif;color:#1f2328;background:#f0f2f5}
+header{background:#1e2a3a;color:#e0e6f0;padding:10px 20px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;flex-shrink:0}
+header a{color:#8fa0b0;text-decoration:none;font-size:.82em;white-space:nowrap}
+header a:hover{color:#fff}
+header .sep{color:#4a5568;flex-shrink:0}
+header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.btn{display:inline-block;padding:5px 12px;border-radius:5px;font-size:.8em;font-weight:500;text-decoration:none;border:none;cursor:pointer;flex-shrink:0}
+.btn-primary{background:#4a9edd;color:#fff}.btn-primary:hover{background:#2980b9}
+.btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}.btn-secondary:hover{background:#e5e7eb}
+.btn-purple{background:#7c5cd8;color:#fff}.btn-purple:hover{background:#6344c0}
+.btn-green{background:#059669;color:#fff}.btn-green:hover{background:#047857}
+.btn-ghost{background:transparent;color:#8fa0b0;border:1px solid #3d5166}.btn-ghost:hover{background:#2c3e50;color:#fff}
+.btn-sm{padding:3px 10px;font-size:.76em}
+
+/* Page wrapper fills remaining height */
+#page-wrapper{display:flex;height:calc(100vh - 42px);overflow:hidden}
+
+/* ── Left: reader ── */
+.reader-pane{width:52%;min-width:300px;display:flex;flex-direction:column;border-right:1px solid #d1d5db;background:#fff;overflow:hidden;flex-shrink:0}
+.reader-toolbar{background:#f7f8fa;border-bottom:1px solid #e5e7eb;padding:6px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-shrink:0}
+.reader-toolbar button{padding:3px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer;font-size:.78em}
+.reader-toolbar button:hover{background:#e5e7eb}
+#page-input{width:48px;text-align:center;border:1px solid #d1d5db;border-radius:4px;padding:3px 4px;font-size:.78em}
+.reader-content{flex:1;overflow:auto;display:flex;flex-direction:column;align-items:center;padding:12px;background:#777;gap:10px;min-height:0}
+.reader-content img{max-width:100%;box-shadow:0 4px 20px rgba(0,0,0,.4);background:#fff}
+#text-panel{background:#fff;width:100%;max-width:680px;padding:14px;font-size:.83em;line-height:1.7;border-radius:6px;display:none}
+#text-panel.visible{display:block}
+.reader-status{background:#f7f8fa;border-top:1px solid #e5e7eb;padding:3px 12px;font-size:.72em;color:#6b7280;display:flex;gap:14px;flex-shrink:0}
+
+/* ── Right: info pane ── */
+.info-pane{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff;min-height:0;min-width:0}
+.tabs{display:flex;border-bottom:2px solid #e5e7eb;background:#f7f8fa;flex-shrink:0}
+.tab{padding:9px 16px;font-size:.82em;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#6b7280;white-space:nowrap}
+.tab.active{border-bottom-color:#4a9edd;color:#1f2328}
+.tab:hover{color:#1f2328}
+.tab-body{flex:1;overflow-y:auto;padding:14px;min-height:0}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ── Questions tab ── */
+.q-filter{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.q-filter button{padding:3px 9px;border:1px solid #d1d5db;border-radius:10px;background:#fff;cursor:pointer;font-size:.75em;color:#374151}
+.q-filter button.active{background:#4a9edd;color:#fff;border-color:#4a9edd}
+.q-toolbar{display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+#q-count{font-size:.78em;color:#6b7280;flex:1}
+.question-card{border:1px solid #e5e7eb;border-radius:7px;padding:10px 12px;margin-bottom:8px;background:#fafafa}
+.question-card:hover{border-color:#b8d0e8;background:#f0f7ff}
+.q-type{font-size:.68em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:4px}
+.q-text{font-size:.86em;line-height:1.5}
+.q-solution{margin-top:7px;font-size:.8em;color:#374151;background:#f0f7fc;border-radius:5px;padding:7px 9px;border-left:3px solid #4a9edd;display:none}
+.q-solution.visible{display:block}
+.q-toggle{font-size:.73em;color:#4a9edd;cursor:pointer;margin-top:5px;display:inline-block}
+.q-pages{font-size:.7em;color:#9ca3af;margin-top:3px}
+.no-q{text-align:center;padding:28px;color:#9ca3af;font-size:.85em}
+
+/* ── Ask AI tab ── */
+.ask-wrap{display:flex;flex-direction:column;gap:10px}
+.ask-wrap p{font-size:.83em;color:#374151}
+.ask-wrap textarea{width:100%;border:1px solid #d1d5db;border-radius:6px;padding:9px 11px;font-size:.85em;line-height:1.5;font-family:inherit;resize:vertical;min-height:72px}
+.ask-wrap textarea:focus{outline:none;border-color:#4a9edd;box-shadow:0 0 0 2px rgba(74,158,221,.15)}
+.ask-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ask-controls select{border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:.8em}
+#ask-status{font-size:.8em;color:#6b7280}
+.answer-card{background:#f0f7ff;border:1px solid #b8d0e8;border-radius:7px;padding:12px 14px;font-size:.86em;line-height:1.65;display:none}
+.answer-card.visible{display:block}
+.answer-meta{font-size:.72em;color:#6b7280;margin-top:7px;border-top:1px solid #d1e8f5;padding-top:5px}
+
+/* ── Generate tab ── */
+.gen-wrap p{font-size:.83em;color:#374151;margin-bottom:10px}
+.gen-controls{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center}
+.gen-controls label{font-size:.8em;color:#374151;display:flex;align-items:center;gap:4px}
+.gen-controls select{border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:.8em}
+.gen-toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+#gen-status{font-size:.8em;color:#6b7280;flex:1}
+.gen-question{border:1px solid #e9d8fd;border-radius:7px;padding:10px 12px;margin-bottom:8px;background:#faf5ff}
+.gq-type{font-size:.68em;font-weight:700;text-transform:uppercase;color:#7c5cd8;margin-bottom:3px;letter-spacing:.05em}
+.gq-text{font-size:.86em;line-height:1.5}
+.gq-options{margin-top:5px;font-size:.81em;color:#374151;line-height:1.7}
+.gq-answer{margin-top:5px;font-size:.8em;color:#374151;background:#f3eeff;border-radius:4px;padding:6px 8px;border-left:3px solid #7c5cd8;display:none}
+.gq-answer.visible{display:block}
+.gq-toggle{font-size:.73em;color:#7c5cd8;cursor:pointer;margin-top:4px;display:inline-block}
+.gq-img{max-width:100%;border-radius:4px;margin-top:6px;border:1px solid #e5e7eb;cursor:pointer}
+.gen-pagination{display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb}
+.gen-pagination button{padding:5px 14px;border:1px solid #d1d5db;border-radius:5px;background:#f7f8fa;cursor:pointer;font-size:.8em}
+.gen-pagination button:disabled{opacity:.4;cursor:default}
+#gen-page-info{font-size:.78em;color:#6b7280;flex:1;text-align:center}
+.warn-card{background:#fff3cd;border:1px solid #ffc107;border-radius:7px;padding:12px 14px;font-size:.83em;color:#856404}
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/ui">📚</a>
+  <span class="sep">›</span>
+  <a href="/ui/books/{{ book.book_id }}">{{ book.title[:30] }}{% if book.title|length > 30 %}…{% endif %}</a>
+  <span class="sep">›</span>
+  <span class="title">Ch.{{ chapter.number }} {{ chapter.title }}</span>
+  {% if prev_chapter %}
+  <a class="btn btn-ghost btn-sm" href="/ui/books/{{ book.book_id }}/chapters/{{ prev_chapter.chapter_id }}">‹ Prev</a>
+  {% endif %}
+  {% if next_chapter %}
+  <a class="btn btn-ghost btn-sm" href="/ui/books/{{ book.book_id }}/chapters/{{ next_chapter.chapter_id }}">Next ›</a>
+  {% endif %}
+</header>
+
+<div id="page-wrapper">
+
+  <!-- ── Left: Reader ── -->
+  <div class="reader-pane">
+    <div class="reader-toolbar">
+      <button onclick="changePage(-1)" id="btn-prev">‹</button>
+      <input id="page-input" type="number" value="{{ chapter.page_start }}"
+             min="{{ chapter.page_start }}" max="{{ chapter.page_end }}"
+             onchange="goToPage(this.value)"/>
+      <span style="font-size:.78em;color:#6b7280">/ {{ chapter.page_end }}</span>
+      <button onclick="changePage(1)" id="btn-next">›</button>
+      <button onclick="toggleText()" title="Toggle text">📄</button>
+      <button onclick="window.open('/viewer/{{ book.book_id }}?page='+currentPage,'_blank')" title="Full reader">⛶</button>
+      <span style="font-size:.72em;color:#9ca3af;margin-left:2px">p.{{ chapter.page_start }}–{{ chapter.page_end }}</span>
+    </div>
+    <div class="reader-content">
+      <img id="page-img" src="/books/{{ book.book_id }}/pages/{{ chapter.page_start }}/render"
+           alt="Page {{ chapter.page_start }}" style="max-width:640px"/>
+      <div id="text-panel"><pre id="page-text" style="white-space:pre-wrap;word-break:break-word;font-family:inherit"></pre></div>
+    </div>
+    <div class="reader-status">
+      <span id="status-page">Page {{ chapter.page_start }}</span>
+      <span id="status-ocr"></span>
+    </div>
+  </div>
+
+  <!-- ── Right: Info pane ── -->
+  <div class="info-pane">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('questions',this)">Questions</div>
+      <div class="tab" onclick="switchTab('ask',this)">💬 Ask AI</div>
+      <div class="tab" onclick="switchTab('generate',this)">⚡ Generate</div>
+    </div>
+    <div class="tab-body">
+
+      <!-- Questions panel -->
+      <div class="tab-panel active" id="tab-questions">
+        <div class="q-filter" id="q-filter">
+          <button class="active" onclick="filterQ('all',this)">All</button>
+          <button onclick="filterQ('exercise',this)">Exercises</button>
+          <button onclick="filterQ('example',this)">Examples</button>
+          <button onclick="filterQ('objective_1',this)">Objective I</button>
+          <button onclick="filterQ('objective_2',this)">Objective II</button>
+          <button onclick="filterQ('short_answer',this)">Short Answer</button>
+          <button onclick="filterQ('worked_example',this)">Worked</button>
+        </div>
+        <div class="q-toolbar">
+          <span id="q-count"></span>
+          <button class="btn btn-green btn-sm" onclick="downloadQuestions()">⬇ Download</button>
+          <button class="btn btn-secondary btn-sm" onclick="extractQuestions()">⚙ Extract</button>
+          <span id="extract-status" style="font-size:.76em;color:#6b7280"></span>
+        </div>
+        <div id="q-list"><div class="no-q">Loading…</div></div>
+      </div>
+
+      <!-- Ask AI panel -->
+      <div class="tab-panel" id="tab-ask">
+        <div class="ask-wrap">
+          <p>Ask anything about this chapter — answered from the book text.</p>
+          <textarea id="ask-input" placeholder="e.g. What is Bernoulli's principle? Explain Pascal's law."></textarea>
+          <div class="ask-controls">
+            <label style="font-size:.8em">Pages:
+              <select id="max-pages">
+                <option value="2">2</option>
+                <option value="3" selected>3</option>
+                <option value="5">5</option>
+              </select>
+            </label>
+            <button class="btn btn-primary" id="ask-btn" onclick="askAI()">Ask</button>
+            <span id="ask-status"></span>
+          </div>
+          <div class="answer-card" id="answer-card">
+            <div id="answer-text"></div>
+            <div class="answer-meta" id="answer-meta"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Generate panel -->
+      <div class="tab-panel" id="tab-generate">
+        <div class="gen-wrap">
+          <p>Generate AI questions from this chapter with page images embedded.</p>
+          <div class="gen-controls">
+            <label>Type:
+              <select id="gen-type">
+                <option value="mixed">Mixed</option>
+                <option value="mcq">MCQ</option>
+                <option value="short">Short Answer</option>
+                <option value="numerical">Numerical</option>
+              </select>
+            </label>
+            <label>Difficulty:
+              <select id="gen-diff">
+                <option value="easy">Easy</option>
+                <option value="medium" selected>Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </label>
+            <label>Per batch:
+              <select id="gen-count">
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+              </select>
+            </label>
+          </div>
+          <div class="gen-toolbar">
+            <button class="btn btn-purple" id="gen-btn" onclick="generateQuestions(true)">⚡ Generate</button>
+            <span id="gen-status"></span>
+            <button class="btn btn-green btn-sm" id="dl-gen-btn" onclick="downloadGenerated()" style="display:none">⬇ Download</button>
+          </div>
+          <div id="gen-list"></div>
+          <div class="gen-pagination" id="gen-pagination" style="display:none">
+            <button id="gen-prev-btn" onclick="generateQuestions(false,-1)" disabled>‹ Prev batch</button>
+            <span id="gen-page-info"></span>
+            <button id="gen-next-btn" onclick="generateQuestions(false,1)">Next batch ›</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- tab-body -->
+  </div><!-- info-pane -->
+</div><!-- page-wrapper -->
+
+<script>
+const BOOK_ID    = "{{ book.book_id }}";
+const CHAPTER_ID = "{{ chapter.chapter_id }}";
+const CH_TITLE   = {{ chapter.title | tojson }};
+const PAGE_START = {{ chapter.page_start }};
+const PAGE_END   = {{ chapter.page_end }};
+let currentPage  = PAGE_START;
+let allQuestions = [];
+let activeFilter = 'all';
+
+// Generated questions state
+let genBatches   = [];   // array of batches (each batch is array of questions)
+let genBatchIdx  = 0;
+
+/* ────────────────────────── Reader ────────────────────────────────────────── */
+function changePage(d) { goToPage(currentPage + d); }
+function goToPage(n) {
+  n = Math.max(PAGE_START, Math.min(PAGE_END, parseInt(n)));
+  if (n === currentPage) return;
+  currentPage = n;
+  document.getElementById('page-input').value = n;
+  document.getElementById('page-img').src = `/books/${BOOK_ID}/pages/${n}/render`;
+  document.getElementById('status-page').textContent = `Page ${n}`;
+  loadPageText(n);
+  document.getElementById('btn-prev').disabled = n <= PAGE_START;
+  document.getElementById('btn-next').disabled = n >= PAGE_END;
+}
+async function loadPageText(n) {
+  const res = await fetch(`/books/${BOOK_ID}/pages/${n}`);
+  if (!res.ok) return;
+  const d = await res.json();
+  document.getElementById('page-text').textContent = d.text || '';
+  document.getElementById('status-ocr').textContent = d.ocr_used ? '⚠ OCR' : '';
+}
+function toggleText() { document.getElementById('text-panel').classList.toggle('visible'); }
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowLeft')  changePage(-1);
+  if (e.key === 'ArrowRight') changePage(1);
+});
+loadPageText(PAGE_START);
+
+/* ────────────────────────── Tabs ───────────────────────────────────────────── */
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+/* ────────────────────────── Questions ──────────────────────────────────────── */
+async function loadQuestions() {
+  const res = await fetch(`/books/${BOOK_ID}/chapters/${CHAPTER_ID}/questions?limit=500`);
+  const data = await res.json();
+  allQuestions = data.questions || [];
+  renderQuestions();
+}
+function filterQ(type, btn) {
+  activeFilter = type;
+  document.querySelectorAll('#q-filter button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderQuestions();
+}
+function renderQuestions() {
+  const qs = activeFilter === 'all' ? allQuestions
+           : allQuestions.filter(q => q.question_type === activeFilter);
+  document.getElementById('q-count').textContent = `${qs.length} question${qs.length !== 1 ? 's' : ''}`;
+  const list = document.getElementById('q-list');
+  if (qs.length === 0) {
+    list.innerHTML = '<div class="no-q">No questions found.<br><small>Click ⚙ Extract to parse questions from this chapter.</small></div>';
+    return;
+  }
+  list.innerHTML = qs.map((q, i) => {
+    const hasFigRef = /\b(figure|fig\.?|diagram|graph|table|chart|image|shown|following|below|above)\b/i.test(q.question_text);
+    return `
+    <div class="question-card">
+      <div class="q-type">${q.question_type.replace(/_/g,' ')}</div>
+      <div class="q-text">${fmtPhysics(q.question_text)}</div>
+      ${(q.solution_text||q.answer_text) ? `
+        <span class="q-toggle" onclick="toggleSol(this)">▶ Show answer</span>
+        <div class="q-solution">${fmtPhysics(q.solution_text||q.answer_text)}</div>` : ''}
+      <div class="q-pages">p.${q.page_start}${q.page_end!==q.page_start?'–'+q.page_end:''}
+        <a href="#" style="color:#4a9edd;margin-left:6px" onclick="event.preventDefault();goToPage(${q.page_start})">Go to page</a>
+      </div>
+      ${hasFigRef ? `<img class="gq-img" src="/books/${BOOK_ID}/pages/${q.page_start}/render"
+           alt="Page ${q.page_start}" title="Page ${q.page_start} — click to navigate"
+           onclick="goToPage(${q.page_start})" style="max-height:160px;width:auto;opacity:.9"/>` : ''}
+    </div>`}).join('');
+}
+function toggleSol(btn) {
+  const sol = btn.nextElementSibling;
+  sol.classList.toggle('visible');
+  btn.textContent = sol.classList.contains('visible') ? '▼ Hide answer' : '▶ Show answer';
+}
+async function extractQuestions() {
+  document.getElementById('extract-status').textContent = 'Extracting…';
+  await fetch(`/books/${BOOK_ID}/chapters/${CHAPTER_ID}/extract`, {method:'POST'});
+  setTimeout(async () => { await loadQuestions(); document.getElementById('extract-status').textContent = '✓ Done'; }, 3500);
+}
+function downloadQuestions() {
+  const qs = activeFilter === 'all' ? allQuestions
+           : allQuestions.filter(q => q.question_type === activeFilter);
+  if (!qs.length) return alert('No questions to download.');
+  const html = buildQuestionsHTML(CH_TITLE, qs);
+  triggerDownload(html, `${CH_TITLE.replace(/\s+/g,'_')}_questions.html`, 'text/html');
+}
+function buildQuestionsHTML(title, qs) {
+  const rows = qs.map((q,i) => `
+    <div class="q">
+      <div class="qtype">${q.question_type.replace(/_/g,' ')}</div>
+      <div class="qtext"><strong>Q${i+1}.</strong> ${escHtml(q.question_text)}</div>
+      ${(q.solution_text||q.answer_text) ? `<div class="qans"><strong>Answer:</strong> ${escHtml(q.solution_text||q.answer_text)}</div>` : ''}
+      <div class="qpage">Page ${q.page_start}</div>
+    </div>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title>
+  <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:32px auto;padding:0 24px;color:#1f2328}
+  h1{font-size:1.3em;margin-bottom:24px}.q{margin-bottom:20px;padding:14px;border:1px solid #e5e7eb;border-radius:7px}
+  .qtype{font-size:.72em;font-weight:700;text-transform:uppercase;color:#6b7280;margin-bottom:4px}
+  .qtext{font-size:.95em;line-height:1.5;margin-bottom:6px}
+  .qans{background:#f0f7ff;padding:8px 10px;border-left:3px solid #4a9edd;font-size:.88em;border-radius:4px}
+  .qpage{font-size:.72em;color:#9ca3af;margin-top:5px}</style></head>
+  <body><h1>${escHtml(title)}</h1>${rows}</body></html>`;
+}
+
+/* ────────────────────────── Ask AI ─────────────────────────────────────────── */
+async function askAI() {
+  const q = document.getElementById('ask-input').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('ask-btn');
+  const status = document.getElementById('ask-status');
+  const card = document.getElementById('answer-card');
+  btn.disabled = true; status.textContent = 'Thinking…'; card.classList.remove('visible');
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/ask`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question:q, chapter_id:CHAPTER_ID,
+                            max_pages:parseInt(document.getElementById('max-pages').value)})
+    });
+    const d = await res.json();
+    if (!res.ok) { status.textContent = '✗ ' + (d.detail||'Error'); }
+    else {
+      document.getElementById('answer-text').textContent = d.answer;
+      document.getElementById('answer-meta').textContent = `Sources: pages ${d.source_pages?d.source_pages.join(', '):'—'}`;
+      card.classList.add('visible'); status.textContent = '';
+    }
+  } catch(e) { status.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
+}
+
+/* ────────────────────────── Generate ───────────────────────────────────────── */
+async function generateQuestions(isNew, direction) {
+  const btn = document.getElementById('gen-btn');
+  const status = document.getElementById('gen-status');
+  const list = document.getElementById('gen-list');
+  const pagination = document.getElementById('gen-pagination');
+
+  if (isNew) {
+    genBatches = [];
+    genBatchIdx = 0;
+  } else {
+    genBatchIdx += direction;
+    // If navigating to an already-fetched batch, just render it
+    if (genBatches[genBatchIdx]) { renderBatch(); return; }
+  }
+
+  btn.disabled = true; status.textContent = 'Generating…'; list.innerHTML = '';
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/chapters/${CHAPTER_ID}/generate-questions`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        question_type: document.getElementById('gen-type').value,
+        difficulty:    document.getElementById('gen-diff').value,
+        count:         parseInt(document.getElementById('gen-count').value)
+      })
+    });
+    const d = await res.json();
+    if (!res.ok) { status.textContent = '✗ ' + (d.detail||'Error'); btn.disabled=false; return; }
+
+    const qs = d.questions || [];
+    if (qs.length === 1 && qs[0].type === 'raw') {
+      list.innerHTML = `<div class="warn-card">⚠ AI response could not be parsed. Try again or reduce count.
+        <details style="margin-top:6px"><summary style="cursor:pointer;color:#6b7280">Raw response</summary>
+        <pre style="white-space:pre-wrap;word-break:break-word;margin-top:6px;font-size:.8em">${escHtml(qs[0].question)}</pre></details></div>`;
+      btn.disabled = false; return;
+    }
+
+    genBatches[genBatchIdx] = qs;
+    status.textContent = `Batch ${genBatchIdx+1} — ${qs.length} question${qs.length!==1?'s':''}`;
+    renderBatch();
+    pagination.style.display = 'flex';
+    document.getElementById('dl-gen-btn').style.display = 'inline-block';
+  } catch(e) { status.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
+}
+
+function renderBatch() {
+  const qs = genBatches[genBatchIdx] || [];
+  const list = document.getElementById('gen-list');
+  const count = parseInt(document.getElementById('gen-count').value);
+
+  document.getElementById('gen-prev-btn').disabled = genBatchIdx === 0;
+  document.getElementById('gen-page-info').textContent =
+    `Batch ${genBatchIdx+1} · Q${genBatchIdx*count+1}–${genBatchIdx*count+qs.length}`;
+
+  list.innerHTML = qs.map((q, i) => {
+    // page_start is always set by the server (falls back to chapter start page)
+    const imgPage = q.page_start || PAGE_START;
+    const hasFigRef = /\b(figure|fig\.?|diagram|graph|table|chart|image|shown|following|below|above)\b/i.test(q.question);
+    return `
+    <div class="gen-question">
+      <div class="gq-type">${q.type||'question'}</div>
+      <div class="gq-text"><strong>Q${genBatchIdx*count+i+1}.</strong> ${fmtPhysics(q.question)}</div>
+      ${q.options ? `<div class="gq-options">${q.options.map(o=>'<div>'+fmtPhysics(o)+'</div>').join('')}</div>` : ''}
+      ${q.answer ? `
+        <span class="gq-toggle" onclick="toggleGen(this)">▶ Show answer</span>
+        <div class="gq-answer">${fmtPhysics(q.answer)}${q.hint?'<br><em style="color:#666">Hint: '+escHtml(q.hint)+'</em>':''}</div>` : ''}
+      ${hasFigRef ? `<img class="gq-img" src="/books/${BOOK_ID}/pages/${imgPage}/render"
+          alt="Page ${imgPage}" title="Page ${imgPage} — click to navigate"
+          onclick="goToPage(${imgPage})" style="max-height:160px;width:auto;opacity:.9"/>` : ''}
+    </div>`}).join('');
+}
+
+function toggleGen(btn) {
+  const ans = btn.nextElementSibling;
+  ans.classList.toggle('visible');
+  btn.textContent = ans.classList.contains('visible') ? '▼ Hide answer' : '▶ Show answer';
+}
+
+function downloadGenerated() {
+  if (!genBatches.length) return;
+  const count = parseInt(document.getElementById('gen-count').value);
+  // Flatten all fetched batches
+  const allQ = genBatches.flat();
+  const html = buildGenHTML(CH_TITLE, allQ, count);
+  triggerDownload(html, `${CH_TITLE.replace(/\s+/g,'_')}_generated.html`, 'text/html');
+}
+
+function buildGenHTML(title, qs, countPerBatch) {
+  const rows = qs.map((q, i) => `
+    <div class="q">
+      <div class="qtype">${q.type||'question'}</div>
+      <div class="qtext"><strong>Q${i+1}.</strong> ${escHtml(q.question)}</div>
+      ${q.options ? `<div class="qopts">${q.options.map(o=>escHtml(o)).join('<br>')}</div>` : ''}
+      ${q.answer ? `<div class="qans"><strong>Answer:</strong> ${escHtml(q.answer)}</div>` : ''}
+      ${q.hint ? `<div class="qhint"><em>Hint: ${escHtml(q.hint)}</em></div>` : ''}
+    </div>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Generated — ${escHtml(title)}</title>
+  <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:32px auto;padding:0 24px;color:#1f2328}
+  h1{font-size:1.3em;margin-bottom:6px}h2{font-size:.88em;color:#6b7280;font-weight:400;margin-bottom:24px}
+  .q{margin-bottom:20px;padding:14px;border:1px solid #e5e7eb;border-radius:7px;break-inside:avoid}
+  .qtype{font-size:.7em;font-weight:700;text-transform:uppercase;color:#7c5cd8;margin-bottom:4px}
+  .qtext{font-size:.95em;line-height:1.5;margin-bottom:6px}
+  .qopts{font-size:.88em;line-height:1.7;margin-bottom:6px;color:#374151}
+  .qans{background:#f3eeff;padding:8px 10px;border-left:3px solid #7c5cd8;font-size:.88em;border-radius:4px}
+  .qhint{font-size:.82em;color:#666;margin-top:4px;font-style:italic}
+  @media print{.q{page-break-inside:avoid}}</style></head>
+  <body><h1>${escHtml(title)}</h1><h2>AI-Generated Questions</h2>${rows}</body></html>`;
+}
+
+/* ────────────────────────── Utilities ──────────────────────────────────────── */
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Physics text formatter — call AFTER escHtml to insert safe HTML tags
+function fmtPhysics(s) {
+  if (!s) return '';
+  s = escHtml(s);
+  // Fix any remaining PUA ≡ (U+F03D rendered as ≡) → =
+  s = s.replace(/≡/g, '=');
+  // Subscripts: Cp → C<sub>p</sub>, CV → C<sub>V</sub>, etc.
+  s = s.replace(/\bC([pV])\b/g, 'C<sub>$1</sub>');
+  // Common subscripted variables: v0, x0, m1, m2, F_net, a_x …
+  s = s.replace(/\b([a-zA-Z])_([a-zA-Z0-9]+)\b/g, '$1<sub>$2</sub>');
+  s = s.replace(/\b([a-zA-Z])([0-9])\b/g, '$1<sub>$2</sub>');
+  // Superscripts: m/s², kg·m², x², v³ (number after letter/unit)
+  s = s.replace(/([a-zA-Z\)])\^([0-9\-\+]+)/g, '$1<sup>$2</sup>');
+  // Unicode superscript digits already in text (²³)
+  s = s.replace(/²/g, '<sup>2</sup>').replace(/³/g, '<sup>3</sup>');
+  // Minus sign normalisation (en-dash or − → proper minus)
+  s = s.replace(/–/g, '−');
+  return s;
+}
+function triggerDownload(content, filename, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], {type}));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+loadQuestions();
+</script>
+</body>
+</html>

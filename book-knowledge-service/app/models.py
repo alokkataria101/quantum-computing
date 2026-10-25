@@ -216,7 +216,7 @@ class AskResponse(BaseModel):
 
 
 class GenerateQuestionsRequest(BaseModel):
-    chapter_id: str = Field(..., description="Chapter to generate questions from")
+    chapter_id: Optional[str] = Field(None, description="Chapter to generate questions from (optional — taken from URL path when using /chapters/{id}/generate-questions)")
     question_type: str = Field(
         "mixed",
         description=(
@@ -238,6 +238,7 @@ class GeneratedQuestion(BaseModel):
     options: Optional[list[str]] = None  # A, B, C, D for MCQ
     answer: Optional[str] = None
     hint: Optional[str] = None
+    page_start: Optional[int] = None   # source page number (for thumbnail)
 
 
 class GenerateQuestionsResponse(BaseModel):

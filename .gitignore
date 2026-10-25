@@ -15,3 +15,5 @@ __pycache__/
 .env.secrets
 .env
 *.env
+# misc PDFs — never commit
+misc/*.pdf

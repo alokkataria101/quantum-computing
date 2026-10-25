@@ -4,6 +4,35 @@ A FastAPI microservice for PDF textbook ingestion, full-text search, page viewin
 
 ---
 
+## Web UI (dev11)
+
+The service ships with a built-in web interface — no API knowledge needed.
+
+| URL | What you get |
+|-----|-------------|
+| **http://localhost:8000/ui** | Library home — all books, upload, index |
+| **http://localhost:8000/ui/books/{book_id}** | Book detail — chapters list, search, re-index |
+| **http://localhost:8000/ui/books/{book_id}/chapters/{chapter_id}** | Chapter page — reader, questions, AI ask |
+
+### Library home (`/ui`)
+- Upload a PDF by drag-and-drop or file picker — indexing starts automatically
+- All books shown as cards with live status (uploaded / indexing / indexed / error)
+- Click **Open** to enter a book, or **Index** to trigger indexing manually
+
+### Book detail (`/ui/books/{id}`)
+- See all chapters with page ranges — click **Open** for the full chapter UI or **Read** to jump straight to the page viewer
+- Full-text search across the whole book with results linked to pages
+- **Re-index** button with live progress bar; **Extract All Questions** in one click
+
+### Chapter page (`/ui/books/{id}/chapters/{ch_id}`)
+- **Left half**: page-by-page reader — OCR images with keyboard navigation (← →), toggle extracted text
+- **Right half — 3 tabs**:
+  - **Questions** — filtered by type (Exercise / Example / MCQ / Short Answer…), show/hide answers, "Go to page" link
+  - **💬 Ask AI** — type any question, answered by watsonx grounded in this chapter's pages
+  - **⚡ Generate** — pick type (MCQ / Short / Numerical / Mixed), difficulty, and count; AI generates questions with answers
+
+---
+
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
@@ -13,17 +42,18 @@ A FastAPI microservice for PDF textbook ingestion, full-text search, page viewin
 5. [Configure the service (.env)](#configure-the-service)
 6. [Configure watsonx AI (optional)](#configure-watsonx-ai-optional)
 7. [Start the server](#start-the-server)
-8. [Upload and index a book](#upload-and-index-a-book)
-9. [Browse the book](#browse-the-book)
-10. [Extract questions (pattern-based)](#extract-questions-pattern-based)
-11. [Generate questions with AI (watsonx)](#generate-questions-with-ai)
-12. [Ask the book a question (watsonx RAG)](#ask-the-book-a-question)
-13. [Export everything](#export-everything)
-14. [Start afresh (reset)](#start-afresh-reset)
-15. [Run tests](#run-tests)
-16. [API reference](#api-reference)
-17. [Project structure](#project-structure)
-18. [Troubleshooting](#troubleshooting)
+8. [Web UI quick start](#web-ui-dev11)
+9. [Upload and index a book](#upload-and-index-a-book)
+10. [Browse the book](#browse-the-book)
+11. [Extract questions (pattern-based)](#extract-questions-pattern-based)
+12. [Generate questions with AI (watsonx)](#generate-questions-with-ai)
+13. [Ask the book a question (watsonx RAG)](#ask-the-book-a-question)
+14. [Export everything](#export-everything)
+15. [Start afresh (reset)](#start-afresh-reset)
+16. [Run tests](#run-tests)
+17. [API reference](#api-reference)
+18. [Project structure](#project-structure)
+19. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -171,8 +201,25 @@ Open in browser:
 
 | URL | What |
 |-----|------|
+| **http://localhost:8000/ui** | **Web UI — library, books, chapters, AI ask** |
 | http://localhost:8000/docs | Swagger UI — interactive API docs |
 | http://localhost:8000/redoc | ReDoc — alternative docs |
+
+---
+
+## Web UI quick start
+
+Once the server is running, open **http://localhost:8000/ui** in your browser.
+
+1. **Upload** — drag-and-drop a PDF onto the upload area (or click to browse) → indexing starts automatically
+2. **Open** — click the book card once status shows `indexed`
+3. **Chapter** — click **Open** on any chapter row
+4. **Read** — page images load on the left; use ← → keys to navigate
+5. **Questions** — switch to the **Questions** tab to browse extracted exercises and examples; filter by type
+6. **Ask AI** — switch to the **💬 Ask AI** tab, type a question, get an answer grounded in the chapter text
+7. **Generate** — switch to **⚡ Generate**, pick type/difficulty/count, click Generate
+
+> AI features (Ask and Generate) require watsonx credentials in `.env.secrets`. Without them all other UI features work normally.
 
 ---
 

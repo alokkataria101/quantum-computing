@@ -90,11 +90,12 @@ class AIClient:
     def is_enabled(self) -> bool:
         return self.enabled
 
-    def generate(self, prompt: str) -> str | None:
+    def generate(self, prompt: str, max_new_tokens: int | None = None) -> str | None:
         if not self.enabled or self._model is None:
             return None
         try:
-            return self._model.generate_text(prompt=prompt).strip()
+            params = {"max_new_tokens": max_new_tokens} if max_new_tokens else {}
+            return self._model.generate_text(prompt=prompt, params=params).strip()
         except Exception as exc:
             msg = str(exc)
             logger.error("[AI] Generation error: %s", exc)
