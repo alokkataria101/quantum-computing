@@ -72,10 +72,10 @@ async def _autoload_intake_books() -> None:
             await db.execute(
                 """INSERT INTO books
                    (book_id, filename, title, author, total_pages, file_size,
-                    sha256, status, uploaded_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,'pending',?,?)""",
+                    sha256, status, created_at)
+                   VALUES (?,?,?,?,?,?,?,'pending',?)""",
                 (book_id, pdf_path.name, title, author, total_pages,
-                 len(data), sha256, now, now),
+                 len(data), sha256, now),
             )
             await db.commit()
             logger.info("[autoload] Registered %s → book_id=%s", pdf_path.name, book_id)
