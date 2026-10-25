@@ -7,7 +7,7 @@ A FastAPI microservice for PDF textbook ingestion, full-text search, page viewin
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Get the code — choose your branch](#get-the-code)
+2. [Get the code](#get-the-code)
 3. [Set up the virtual environment](#set-up-the-virtual-environment)
 4. [Install dependencies](#install-dependencies)
 5. [Configure the service (.env)](#configure-the-service)
@@ -45,23 +45,9 @@ python3.13 --version   # should print Python 3.13.x
 
 ## Get the code
 
-
-First, pick the branch that matches what you want to do:
-
-| Branch | What you get | Use when |
-|--------|-------------|----------|
-| `main` | Upload, index, search, extract questions | No AI needed, simplest setup |
-| `dev1` | Everything in main + IBM watsonx AI Q&A and question generation | You have watsonx credentials and want AI features |
-| `dev2` | Everything in dev1 + Docker + `books/` auto-load folder | You want to run in Docker or drop PDFs in a folder to auto-index |
-
 ```bash
 git clone https://github.com/alokkataria101/quantum-computing.git
 cd quantum-computing/book-knowledge-service
-
-# Pick ONE of these depending on what you want:
-git checkout main    # no AI
-git checkout dev1    # AI (watsonx), no Docker
-git checkout dev2    # AI (watsonx) + Docker + auto-load books/
 ```
 
 ---
@@ -190,7 +176,7 @@ Open in browser:
 
 ---
 
-## Run with Docker (dev2 — AI + Docker)
+## Run with Docker
 
 > **Requires:** Docker Desktop installed and running (whale icon in menu bar). No Python needed.
 > Download: https://www.docker.com/products/docker-desktop/
@@ -229,7 +215,6 @@ Both `books/` and `secrets/` are git-ignored — your files stay only on your ma
 ```bash
 git clone https://github.com/alokkataria101/quantum-computing.git
 cd quantum-computing/book-knowledge-service
-git checkout dev2
 ```
 
 ---
@@ -335,7 +320,7 @@ The entrypoint checks these locations in order — first match wins:
 
 ---
 
-## Auto-load books on startup (dev2)
+## Auto-load books on startup
 
 Drop PDF files into the `books/` folder before starting — they are automatically registered and indexed. Works with both local Python and Docker.
 
@@ -364,13 +349,12 @@ book-knowledge-service/
 ### 1. Clone the repository
 
 ```bash
-mkdir -p /tmp/dev2
-cd /tmp/dev2
+mkdir -p /tmp/quantum-project
+cd /tmp/quantum-project
 
 git clone https://github.com/alokkataria101/quantum-computing.git
 cd quantum-computing/book-knowledge-service
 
-git checkout dev2
 git pull
 ```
 
@@ -478,7 +462,7 @@ docker compose down
 ### 9. Restart
 
 ```bash
-cd /tmp/dev2/quantum-computing/book-knowledge-service
+cd /tmp/quantum-project/quantum-computing/book-knowledge-service
 docker compose up -d
 ```
 
@@ -681,7 +665,7 @@ curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf"  -o all_questions.pd
 
 ## Generate questions with AI
 
-> **Requires:** watsonx credentials configured (see [Configure watsonx AI](#configure-watsonx-ai-optional)) and **dev1 branch**.
+> **Requires:** watsonx credentials configured (see [Configure watsonx AI](#configure-watsonx-ai-optional)).
 > Without credentials the endpoint returns HTTP 503 — the rest of the service is unaffected.
 
 ### Step 16 — Generate AI questions from a chapter
@@ -737,7 +721,7 @@ curl -X POST http://localhost:8000/books/<BOOK_ID>/chapters/<CH_ID>/generate-que
 
 ## Ask the book a question
 
-> **Requires:** watsonx credentials and **dev1 branch**.
+> **Requires:** watsonx credentials.
 
 ### Step 17 — Ask anything about the book
 
@@ -867,7 +851,7 @@ book-knowledge-service/
 │       ├── books.py          POST/GET /books
 │       ├── index.py          /index, /chapters, /pages, /search
 │       ├── questions.py      /questions, /extract, /generate (pattern)
-│       ├── ai.py             /ask, /generate-questions (watsonx) — dev1 only
+│       ├── ai.py             /ask, /generate-questions (watsonx)
 │       └── jobs_export.py    /jobs, /export
 ├── templates/
 │   └── viewer.html           Jinja2 page viewer
