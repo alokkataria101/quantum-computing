@@ -316,6 +316,9 @@ function renderQuestions() {
       <div class="q-pages">p.${q.page_start}${q.page_end!==q.page_start?'–'+q.page_end:''}
         <a href="#" style="color:#4a9edd;margin-left:6px" onclick="event.preventDefault();goToPage(${q.page_start})">Go to page</a>
       </div>
+      <img class="gq-img" src="/books/${BOOK_ID}/pages/${q.page_start}/render"
+           alt="Page ${q.page_start}" title="Page ${q.page_start} — click to navigate"
+           onclick="goToPage(${q.page_start})" style="max-height:180px;width:auto"/>
     </div>`).join('');
 }
 function toggleSol(btn) {
