@@ -138,6 +138,41 @@ np.where(x < 0.5, sin(10*x), cos(5*x)) # piecewise
 
 ---
 
+## Expose publicly with ngrok
+
+ngrok gives you a public HTTPS URL so you can share the dashboard with others or access it from another device.
+
+> **Prerequisite:** the Streamlit dashboard must be running locally (port 8501).
+
+**Install ngrok** (if not already):
+```bash
+brew install ngrok        # macOS / Linux via Homebrew
+# or download from https://ngrok.com/download
+```
+
+**Start ngrok** (new terminal):
+```bash
+ngrok http 8501
+```
+
+Wait for:
+```
+Session Status: online
+Forwarding: https://<your-ngrok-url> -> http://localhost:8501
+```
+
+**Access remotely:**
+
+| Resource | URL |
+|---|---|
+| Dashboard | https://\<your-ngrok-url\> |
+
+**Monitor requests:** http://127.0.0.1:4040 — ngrok web UI for inspecting live traffic.
+
+**Stop ngrok:** `Ctrl+C` in the ngrok terminal.
+
+---
+
 ## Disclaimer
 
 Educational demonstration only. No financial advice. No quantum advantage claimed for this use case.

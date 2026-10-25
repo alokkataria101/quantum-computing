@@ -230,6 +230,41 @@ This project is for **educational and research purposes only**. It does not cons
 
 ---
 
+## Expose publicly with ngrok
+
+ngrok gives you a public HTTPS URL so you can share the dashboard with others or access it from another device.
+
+> **Prerequisite:** the Streamlit dashboard must be running locally (port 8501).
+
+**Install ngrok** (if not already):
+```bash
+brew install ngrok        # macOS / Linux via Homebrew
+# or download from https://ngrok.com/download
+```
+
+**Start ngrok** (new terminal):
+```bash
+ngrok http 8501
+```
+
+Wait for:
+```
+Session Status: online
+Forwarding: https://<your-ngrok-url> -> http://localhost:8501
+```
+
+**Access remotely:**
+
+| Resource | URL |
+|---|---|
+| Dashboard | https://\<your-ngrok-url\> |
+
+**Monitor requests:** http://127.0.0.1:4040 — ngrok web UI for inspecting live traffic.
+
+**Stop ngrok:** `Ctrl+C` in the ngrok terminal.
+
+---
+
 ## 5-Minute Academic Demonstration Script
 
 **Slide 1 – Motivation (30 s)**

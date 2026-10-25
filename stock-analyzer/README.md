@@ -189,6 +189,23 @@ Users see plain language. Behind each metric is a real computation:
 
 ---
 
+## IBM watsonx AI (optional)
+
+QPIP runs fully without AI. If watsonx credentials are configured, the **AI Portfolio Report** generates a natural-language investment analysis using `meta-llama/llama-3-3-70b-instruct`.
+
+All apps in this repo share a **single secrets file at the repo root** — set it once and every app picks it up:
+
+```bash
+# quantum-computing/.env.secrets  (git-ignored, never committed)
+WATSONX_API_KEY=your-api-key-here
+WATSONX_PROJECT_ID=your-project-id-here
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+```
+
+Without credentials the app starts and runs normally — AI features are silently skipped.
+
+---
+
 ## Research Pages
 
 Research pages are available under **⚙ Research & Settings**:

@@ -12,7 +12,7 @@ Hands-on quantum computing and quantum physics experiments in Python: Schröding
 | [`phase-estimation-basics/`](phase-estimation-basics/) | From one-qubit phase measurement to full Quantum Phase Estimation | [`phase-estimation-basics/README.md`](phase-estimation-basics/README.md) |
 | [`VQE/`](VQE/) | Five-step VQE tutorial: Hartree–Fock → helium → H₂ dissociation → CO₂ active space → CCSD benchmark | [`VQE/README.md`](VQE/README.md) |
 | [`quantum-computing-portfolio/`](quantum-computing-portfolio/) | Six small projects (`quantum_lab` library, demos, tests, Streamlit app) | [`quantum-computing-portfolio/README.md`](quantum-computing-portfolio/README.md) |
-| [`stock-analyzer/`](stock-analyzer/) | Stock analysis with quantum encodings; needs internet for most features | [`stock-analyzer/README.md`](stock-analyzer/README.md) |
+| [`stock-analyzer/`](stock-analyzer/) | **Quantum Portfolio Intelligence Platform (QPIP)** — 9-page Streamlit dashboard, NSE portfolio analysis, Add/Buy/Hold/Reduce/Avoid signals, Portfolio Doctor, What-if Simulator, Opportunity Scanner, IBM watsonx AI (optional), Docker | [`stock-analyzer/README.md`](stock-analyzer/README.md) |
 | [`quantum-stock-qft/`](quantum-stock-qft/) | **Quantum Fourier Analysis of Financial Time Series** — Yahoo Finance data, Qiskit QFT, classical FFT baseline, Streamlit dashboard (7 tabs), HTML report | [`quantum-stock-qft/README.md`](quantum-stock-qft/README.md) |
 | [`quantum-function-qft/`](quantum-function-qft/) | **Quantum Fourier Analysis of f(x)** — safe expression parser, 5-sample gallery, DFT vs QFT comparison, experiments tab, Streamlit dashboard | [`quantum-function-qft/README.md`](quantum-function-qft/README.md) |
 | [`quantum-portfolio-intelligence/`](quantum-portfolio-intelligence/) | **Quantum Portfolio Intelligence Platform (QPIP)** — 9-page Streamlit dashboard, NSE portfolio analysis, Add/Buy/Hold/Reduce/Avoid signals, Portfolio Doctor, What-if Simulator, Opportunity Scanner, IBM watsonx AI, Qiskit Aer | [`quantum-portfolio-intelligence/README.md`](quantum-portfolio-intelligence/README.md) |
@@ -39,6 +39,15 @@ cd quantum-function-qft
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 .venv/bin/streamlit run app.py    # → http://localhost:8502
+```
+
+### stock-analyzer — QPIP NSE Portfolio Dashboard
+
+```bash
+cd stock-analyzer
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+.venv/bin/streamlit run app.py --server.port 8501   # → http://localhost:8501
 ```
 
 ### quantum-portfolio-intelligence — QPIP NSE Portfolio Dashboard
