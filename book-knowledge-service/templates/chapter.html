@@ -316,7 +316,7 @@ function renderQuestions() {
       <div class="q-pages">p.${q.page_start}${q.page_end!==q.page_start?'–'+q.page_end:''}
         <a href="#" style="color:#4a9edd;margin-left:6px" onclick="event.preventDefault();goToPage(${q.page_start})">Go to page</a>
       </div>
-      <img class="gq-img" src="/books/${BOOK_ID}/pages/${q.page_start}/render"
+      <img class="gq-img" src="/books/${BOOK_ID}/pages/${q.page_start}/render/figures"
            alt="Page ${q.page_start}" title="Page ${q.page_start} — click to navigate"
            onclick="goToPage(${q.page_start})" style="max-height:180px;width:auto"/>
     </div>`).join('');
@@ -447,7 +447,7 @@ function renderBatch() {
       ${q.answer ? `
         <span class="gq-toggle" onclick="toggleGen(this)">▶ Show answer</span>
         <div class="gq-answer">${escHtml(q.answer)}${q.hint?'<br><em style="color:#666">Hint: '+escHtml(q.hint)+'</em>':''}</div>` : ''}
-      <img class="gq-img" src="/books/${BOOK_ID}/pages/${imgPage}/render"
+      <img class="gq-img" src="/books/${BOOK_ID}/pages/${imgPage}/render/figures"
           alt="Page ${imgPage}" title="Page ${imgPage} — click to navigate"
           onclick="goToPage(${imgPage})" style="max-height:180px;width:auto"/>
     </div>`}).join('');

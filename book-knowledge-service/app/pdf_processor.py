@@ -145,3 +145,66 @@ def render_page_to_png(pdf_path: Path, page_number: int, dpi: int = 150) -> byte
     png_bytes = pix.tobytes("png")
     doc.close()
     return png_bytes
+
+
+def render_page_figures(pdf_path: Path, page_number: int, dpi: int = 150, padding: int = 8) -> bytes | None:
+    """
+    Return a PNG containing only the image/figure regions on the given page.
+
+    Uses PyMuPDF's get_images() to find embedded raster images and
+    get_drawings() to find vector figure blocks, then unions their bounding
+    boxes, pads slightly, and renders that clip region at the requested DPI.
+
+    Returns None if no images or figures are found (caller should fall back
+    to the full-page render).
+    page_number is 1-based.
+    """
+    if not FITZ_AVAILABLE:
+        raise RuntimeError("PyMuPDF is not installed.")
+    doc = fitz.open(str(pdf_path))
+    if page_number < 1 or page_number > doc.page_count:
+        doc.close()
+        raise ValueError(f"Page {page_number} out of range (1–{doc.page_count}).")
+    page = doc[page_number - 1]
+    page_rect = page.rect  # full page in pts
+
+    boxes: list["fitz.Rect"] = []
+
+    # 1. Embedded raster images — each has a bbox on the page
+    for img_info in page.get_image_info(xrefs=True):
+        r = fitz.Rect(img_info["bbox"])
+        if r.is_valid and not r.is_empty and r.get_area() > 100:
+            boxes.append(r)
+
+    # 2. Large vector drawing blocks (figures, graphs) — skip tiny decorations
+    for path in page.get_drawings():
+        r = fitz.Rect(path["rect"])
+        if r.is_valid and not r.is_empty and r.get_area() > 2000:
+            boxes.append(r)
+
+    doc.close()
+
+    if not boxes:
+        return None  # no figures found
+
+    # Union all boxes into one bounding rect
+    union = boxes[0]
+    for b in boxes[1:]:
+        union |= b
+
+    # Add padding (in pts) and clamp to page
+    pad = padding * 72 / dpi  # convert px padding to pts at render dpi
+    clip = fitz.Rect(
+        max(union.x0 - pad, page_rect.x0),
+        max(union.y0 - pad, page_rect.y0),
+        min(union.x1 + pad, page_rect.x1),
+        min(union.y1 + pad, page_rect.y1),
+    )
+
+    doc2 = fitz.open(str(pdf_path))
+    page2 = doc2[page_number - 1]
+    mat = fitz.Matrix(dpi / 72, dpi / 72)
+    pix = page2.get_pixmap(matrix=mat, clip=clip, alpha=False)
+    png_bytes = pix.tobytes("png")
+    doc2.close()
+    return png_bytes

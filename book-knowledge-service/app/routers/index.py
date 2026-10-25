@@ -19,7 +19,7 @@ from ..indexer import (
 from ..chapter_parser import detect_chapters
 from ..jobs import create_job, run_job, update_job
 from ..models import ChapterList, ChapterRecord, PageRecord, JobRecord, JobStatus, JobType, SearchResult, SearchHit
-from ..pdf_processor import extract_pages, extract_pdf_meta, render_page_to_png
+from ..pdf_processor import extract_pages, extract_pdf_meta, render_page_to_png, render_page_figures
 from ..storage import book_path, rendered_page_path
 
 router = APIRouter(tags=["indexing"])
@@ -154,6 +154,35 @@ async def render_page(book_id: str, page_number: int, dpi: int = Query(150, ge=7
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     cached.write_bytes(png)
+    return Response(png, media_type="image/png")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /books/{book_id}/pages/{page_number}/render/figures  – cropped figure PNG
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/books/{book_id}/pages/{page_number}/render/figures")
+async def render_page_figures_endpoint(
+    book_id: str,
+    page_number: int,
+    dpi: int = Query(150, ge=72, le=300),
+):
+    """Return a PNG cropped to only the image/figure regions on the page.
+    Falls back to the full-page render if no figures are detected."""
+    path = book_path(book_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="PDF file not found.")
+    try:
+        png = render_page_figures(path, page_number, dpi=dpi)
+        if png is None:
+            # No figures on this page — fall back to full-page render
+            cached = rendered_page_path(book_id, page_number)
+            if cached.exists():
+                png = cached.read_bytes()
+            else:
+                png = render_page_to_png(path, page_number, dpi=dpi)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return Response(png, media_type="image/png")
 
 
