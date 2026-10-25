@@ -9,7 +9,7 @@ import aiosqlite
 
 from .database import get_db
 from .models import ChapterRecord, PageRecord
-from .pdf_processor import ExtractedPage
+from .pdf_processor import ExtractedPage, extract_figures
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,35 @@ async def upsert_chapters(chapters: list[ChapterRecord]) -> None:
         rows,
     )
     await db.commit()
+
+
+async def upsert_figures(book_id: str, pdf_path) -> int:
+    """Extract figure captions from the PDF and store bboxes in the figures table.
+    Returns the number of figures indexed."""
+    from pathlib import Path
+    figs = extract_figures(Path(pdf_path))
+    if not figs:
+        return 0
+    db = await get_db()
+    rows = [
+        (
+            f"{book_id}_{f['fig_num']}",
+            book_id,
+            f["fig_num"],
+            f["page"],
+            f["bbox"][0], f["bbox"][1], f["bbox"][2], f["bbox"][3],
+        )
+        for f in figs
+    ]
+    await db.executemany(
+        """INSERT OR REPLACE INTO figures
+           (figure_id, book_id, fig_num, page, bbox_x0, bbox_y0, bbox_x1, bbox_y1)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        rows,
+    )
+    await db.commit()
+    logger.info("Indexed %d figures for book %s", len(rows), book_id)
+    return len(rows)
 
 
 async def rebuild_fts(book_id: str) -> None:

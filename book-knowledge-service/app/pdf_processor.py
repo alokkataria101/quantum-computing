@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -147,64 +148,122 @@ def render_page_to_png(pdf_path: Path, page_number: int, dpi: int = 150) -> byte
     return png_bytes
 
 
-def render_page_figures(pdf_path: Path, page_number: int, dpi: int = 150, padding: int = 8) -> bytes | None:
+# ── Figure caption pattern ────────────────────────────────────────────────────
+# Matches "Figure 8.10", "Fig. 3.1", "Figure 26.1a" etc.
+_FIG_CAPTION_RE = re.compile(
+    r'^\s*(?:Figure|Fig\.?)\s*(\d+[\.\-]\d+[a-z]?)\s*$', re.I
+)
+
+# Also used by the template JS to detect figure references in question text
+FIG_REF_RE_STR = r'\b(?:figure|fig\.?)\s*\(?(\d+[\.\-]\d+[a-z]?)\)?'
+
+
+def extract_figures(pdf_path: Path, pad_pts: float = 10.0) -> list[dict]:
     """
-    Return a PNG containing only the image/figure regions on the given page.
+    Scan every page of the PDF for figure caption blocks ("Figure N.M").
+    For each caption found, compute the bounding box of the figure above it
+    (the vertical gap in that column between the preceding text block and the
+    caption label itself).
 
-    Uses PyMuPDF's get_images() to find embedded raster images and
-    get_drawings() to find vector figure blocks, then unions their bounding
-    boxes, pads slightly, and renders that clip region at the requested DPI.
+    Returns a list of dicts:
+        fig_num   – normalised label, e.g. "8.10"
+        page      – 1-based page number
+        bbox      – (x0, y0, x1, y1) in PDF points
+    """
+    if not FITZ_AVAILABLE:
+        raise RuntimeError("PyMuPDF is not installed.")
 
-    Returns None if no images or figures are found (caller should fall back
-    to the full-page render).
-    page_number is 1-based.
+    doc = fitz.open(str(pdf_path))
+    results: list[dict] = []
+
+    for pg_idx in range(doc.page_count):
+        page = doc[pg_idx]
+        page_rect = page.rect
+        pw, ph = page_rect.width, page_rect.height
+        mid = pw / 2
+
+        # All text blocks on this page, sorted top→bottom
+        blocks = [
+            (b[0], b[1], b[2], b[3], b[4])   # x0,y0,x1,y1,text
+            for b in page.get_text("blocks")
+            if b[6] == 0 and b[3] - b[1] > 2  # text blocks only
+        ]
+        blocks.sort(key=lambda b: b[1])
+
+        for idx, (cx0, cy0, cx1, cy1, text) in enumerate(blocks):
+            m = _FIG_CAPTION_RE.match(text)
+            if not m:
+                continue
+
+            fig_num = m.group(1).replace('-', '.')  # normalise separator
+            caption_top = cy0   # caption label starts here
+            caption_y1  = cy1
+
+            # Determine which column this caption is in
+            col_left  = cx0 < mid  # True = left column
+
+            # Find the text block directly above this caption in the same column
+            # (same column = centre-x on the same side of mid)
+            above = None
+            for prev_x0, prev_y0, prev_x1, prev_y1, _ in reversed(blocks[:idx]):
+                prev_centre = (prev_x0 + prev_x1) / 2
+                if col_left and prev_centre > mid:
+                    continue   # skip right-column blocks
+                if not col_left and prev_centre < mid:
+                    continue   # skip left-column blocks
+                if prev_y1 <= caption_top:
+                    above = (prev_x0, prev_y0, prev_x1, prev_y1)
+                    break
+
+            # Figure bbox = from bottom-of-above-block to top-of-caption, full col width
+            if above:
+                fig_y0 = above[3]   # bottom of the preceding text block
+            else:
+                fig_y0 = 0.0        # top of page if nothing above
+
+            # Column x extent: use the caption's x extent padded
+            fig_x0 = max(cx0 - pad_pts, 0)
+            fig_x1 = min(cx1 + pad_pts, pw)
+
+            # Add some padding above and below
+            bbox = (
+                fig_x0,
+                max(fig_y0 - pad_pts, 0),
+                fig_x1,
+                min(caption_y1 + pad_pts, ph),
+            )
+
+            # Skip degenerate boxes (less than 20pt tall)
+            if bbox[3] - bbox[1] < 20:
+                continue
+
+            results.append({
+                "fig_num": fig_num,
+                "page":    pg_idx + 1,
+                "bbox":    bbox,
+            })
+            logger.debug("Found Figure %s on page %d  bbox=%s", fig_num, pg_idx + 1, bbox)
+
+    doc.close()
+    return results
+
+
+def render_figure_crop(
+    pdf_path: Path,
+    bbox: tuple[float, float, float, float],
+    page_number: int,
+    dpi: int = 150,
+) -> bytes:
+    """Render a cropped region of a PDF page to PNG bytes.
+    bbox is (x0, y0, x1, y1) in PDF points. page_number is 1-based.
     """
     if not FITZ_AVAILABLE:
         raise RuntimeError("PyMuPDF is not installed.")
     doc = fitz.open(str(pdf_path))
-    if page_number < 1 or page_number > doc.page_count:
-        doc.close()
-        raise ValueError(f"Page {page_number} out of range (1–{doc.page_count}).")
     page = doc[page_number - 1]
-    page_rect = page.rect  # full page in pts
-
-    boxes: list["fitz.Rect"] = []
-
-    # 1. Embedded raster images — each has a bbox on the page
-    for img_info in page.get_image_info(xrefs=True):
-        r = fitz.Rect(img_info["bbox"])
-        if r.is_valid and not r.is_empty and r.get_area() > 100:
-            boxes.append(r)
-
-    # 2. Large vector drawing blocks (figures, graphs) — skip tiny decorations
-    for path in page.get_drawings():
-        r = fitz.Rect(path["rect"])
-        if r.is_valid and not r.is_empty and r.get_area() > 2000:
-            boxes.append(r)
-
-    doc.close()
-
-    if not boxes:
-        return None  # no figures found
-
-    # Union all boxes into one bounding rect
-    union = boxes[0]
-    for b in boxes[1:]:
-        union |= b
-
-    # Add padding (in pts) and clamp to page
-    pad = padding * 72 / dpi  # convert px padding to pts at render dpi
-    clip = fitz.Rect(
-        max(union.x0 - pad, page_rect.x0),
-        max(union.y0 - pad, page_rect.y0),
-        min(union.x1 + pad, page_rect.x1),
-        min(union.y1 + pad, page_rect.y1),
-    )
-
-    doc2 = fitz.open(str(pdf_path))
-    page2 = doc2[page_number - 1]
+    clip = fitz.Rect(*bbox).intersect(page.rect)
     mat = fitz.Matrix(dpi / 72, dpi / 72)
-    pix = page2.get_pixmap(matrix=mat, clip=clip, alpha=False)
+    pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
     png_bytes = pix.tobytes("png")
-    doc2.close()
+    doc.close()
     return png_bytes
