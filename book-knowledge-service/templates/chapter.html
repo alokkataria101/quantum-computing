@@ -434,9 +434,8 @@ function renderBatch() {
     `Batch ${genBatchIdx+1} · Q${genBatchIdx*count+1}–${genBatchIdx*count+qs.length}`;
 
   list.innerHTML = qs.map((q, i) => {
-    // Find a relevant page image: use page_start from question if available, else current page
-    const imgPage = (q.page_start && q.page_start >= PAGE_START && q.page_start <= PAGE_END)
-                    ? q.page_start : null;
+    // page_start is always set by the server (falls back to chapter start page)
+    const imgPage = q.page_start || PAGE_START;
     return `
     <div class="gen-question">
       <div class="gq-type">${q.type||'question'}</div>
@@ -445,9 +444,9 @@ function renderBatch() {
       ${q.answer ? `
         <span class="gq-toggle" onclick="toggleGen(this)">▶ Show answer</span>
         <div class="gq-answer">${escHtml(q.answer)}${q.hint?'<br><em style="color:#666">Hint: '+escHtml(q.hint)+'</em>':''}</div>` : ''}
-      ${imgPage ? `<img class="gq-img" src="/books/${BOOK_ID}/pages/${imgPage}/render"
+      <img class="gq-img" src="/books/${BOOK_ID}/pages/${imgPage}/render"
           alt="Page ${imgPage}" title="Page ${imgPage} — click to navigate"
-          onclick="goToPage(${imgPage})" style="max-height:180px;width:auto"/>` : ''}
+          onclick="goToPage(${imgPage})" style="max-height:180px;width:auto"/>
     </div>`}).join('');
 }
 

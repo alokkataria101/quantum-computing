@@ -261,10 +261,12 @@ OUTPUT FORMAT (strict JSON array, nothing else):
     "question": "full question text",
     "options": ["(A) ...", "(B) ...", "(C) ...", "(D) ..."],
     "answer": "correct answer or solution",
-    "hint": "optional hint"
+    "hint": "optional hint",
+    "page_start": <page number from CHAPTER TEXT where this question is based, e.g. 42>
   }}
 ]
 For short/numerical questions, set "options" to null.
+For "page_start", use the [Page N] marker nearest to the content this question references.
 
 CHAPTER: {ch["title"]}
 
@@ -297,13 +299,20 @@ JSON OUTPUT:"""
             data = json.loads(clean)
 
         for item in data:
+            # page_start: use what AI returned; must be within the chapter range
+            pg = item.get("page_start")
+            if isinstance(pg, int) and ch["page_start"] <= pg <= ch["page_end"]:
+                page_start = pg
+            else:
+                page_start = ch["page_start"]  # fall back to first page of chapter
             questions.append(GeneratedQuestion(
-                number   = item.get("number", len(questions) + 1),
-                type     = item.get("type", q_type),
-                question = item.get("question", ""),
-                options  = item.get("options"),
-                answer   = item.get("answer"),
-                hint     = item.get("hint"),
+                number     = item.get("number", len(questions) + 1),
+                type       = item.get("type", q_type),
+                question   = item.get("question", ""),
+                options    = item.get("options"),
+                answer     = item.get("answer"),
+                hint       = item.get("hint"),
+                page_start = page_start,
             ))
     except Exception as exc:
         logger.warning("Failed to parse AI JSON response: %s\nRaw: %s", exc, raw[:500])

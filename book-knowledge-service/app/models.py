@@ -238,6 +238,7 @@ class GeneratedQuestion(BaseModel):
     options: Optional[list[str]] = None  # A, B, C, D for MCQ
     answer: Optional[str] = None
     hint: Optional[str] = None
+    page_start: Optional[int] = None   # source page number (for thumbnail)
 
 
 class GenerateQuestionsResponse(BaseModel):
