@@ -4,7 +4,7 @@ A FastAPI microservice for PDF textbook ingestion, full-text search, page viewin
 
 ---
 
-## Web UI (dev11)
+## Web UI
 
 The service ships with a built-in web interface — no API knowledge needed.
 
@@ -42,7 +42,7 @@ The service ships with a built-in web interface — no API knowledge needed.
 5. [Configure the service (.env)](#configure-the-service)
 6. [Configure watsonx AI (optional)](#configure-watsonx-ai-optional)
 7. [Start the server](#start-the-server)
-8. [Web UI quick start](#web-ui-dev11)
+8. [Web UI quick start](#web-ui)
 9. [Upload and index a book](#upload-and-index-a-book)
 10. [Browse the book](#browse-the-book)
 11. [Extract questions (pattern-based)](#extract-questions-pattern-based)
