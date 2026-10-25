@@ -6,6 +6,8 @@ storage/books/*.pdf
 storage/indexes/
 storage/exports/
 *.db
+*.db-shm
+*.db-wal
 .env
 # Intake folder — PDFs dropped here are auto-loaded on startup (not committed)
 books/*.pdf
