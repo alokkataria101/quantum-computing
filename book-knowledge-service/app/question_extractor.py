@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .models import ChapterRecord, QuestionRecord, QuestionType
+from .pdf_processor import normalize_pdf_text
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +91,10 @@ def extract_questions_from_chapter(
     if not chapter_pages:
         return []
 
-    # Concatenate chapter text with page markers
+    # Concatenate chapter text with page markers; normalise PUA chars
     combined_blocks: list[tuple[int, str]] = []  # (page_number, text)
     for p in chapter_pages:
-        combined_blocks.append((p["page_number"], p["text"]))
+        combined_blocks.append((p["page_number"], normalize_pdf_text(p["text"])))
 
     results: list[QuestionRecord] = []
 

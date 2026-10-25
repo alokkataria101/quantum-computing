@@ -44,6 +44,33 @@ class PDFMeta:
     toc: list[list]         # PyMuPDF TOC: [[level, title, page], ...]
 
 
+# ── Private-Use-Area glyph normalisation ─────────────────────────────────────
+# Some PDFs use custom symbol fonts whose glyphs land in the Unicode PUA
+# (U+E000–U+F8FF).  PyMuPDF extracts the raw code-points, which browsers
+# display as boxes or wrong glyphs.  Map them back to the intended characters.
+_PUA_MAP: dict[str, str] = {
+    "\uf020": " ",   # space (symbol font space)
+    "\uf02b": "+",   # plus
+    "\uf02d": "−",   # minus (→ proper U+2212)
+    "\uf03d": "=",   # equals
+    "\uf044": "Δ",   # delta
+    "\uf067": "γ",   # gamma
+    "\uf0b0": "°",   # degree sign
+    # extend here as more PUA chars are discovered
+}
+_PUA_TABLE = str.maketrans(_PUA_MAP)
+
+
+def normalize_pdf_text(text: str) -> str:
+    """Normalize text extracted from PDFs — fix PUA glyph substitutions,
+    collapse excessive whitespace, and strip control characters."""
+    # 1. Map known PUA chars to their intended equivalents
+    text = text.translate(_PUA_TABLE)
+    # 2. Replace any remaining PUA chars (U+E000–U+F8FF) with '?'
+    text = "".join(ch if ord(ch) < 0xE000 or ord(ch) > 0xF8FF else "?" for ch in text)
+    return text
+
+
 # ── Text density threshold to call a page "scanned" ─────────────────────────
 _MIN_TEXT_CHARS = 20
 
