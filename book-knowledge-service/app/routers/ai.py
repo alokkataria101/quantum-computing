@@ -273,8 +273,12 @@ CHAPTER TEXT:
 
 JSON OUTPUT:"""
 
+    # Scale token budget: ~200 tokens per question for MCQ (options + answer), ~120 for short/numerical
+    tokens_per_q = 220 if q_type in ("mcq", "mixed") else 140
+    max_tokens = min(max(tokens_per_q * req.count + 200, 800), 3000)
+
     try:
-        raw = ai.generate(prompt)
+        raw = ai.generate(prompt, max_new_tokens=max_tokens)
     except RateLimitError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     if not raw:

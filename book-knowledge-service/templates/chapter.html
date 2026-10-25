@@ -360,15 +360,25 @@ async function generateQuestions() {
     const d = await res.json();
     if (!res.ok) { status.textContent = '✗ ' + (d.detail || 'Error'); return; }
     status.textContent = `Generated ${d.total} question${d.total !== 1 ? 's' : ''}`;
-    list.innerHTML = (d.questions || []).map((q, i) => `
-      <div class="gen-question">
-        <div class="gq-type">${q.type}</div>
-        <div class="gq-text">Q${q.number}. ${escHtml(q.question)}</div>
-        ${q.options ? `<div class="gq-options">${q.options.map(o => escHtml(o)).join('<br>')}</div>` : ''}
-        ${q.answer ? `
-          <span class="gq-toggle" onclick="toggleGen(${i})">▶ Show answer</span>
-          <div class="gq-answer" id="gq-${i}">${escHtml(q.answer)}${q.hint ? '<br><em>Hint: '+escHtml(q.hint)+'</em>' : ''}</div>` : ''}
-      </div>`).join('');
+    const qs = d.questions || [];
+    // If AI returned unparseable raw text, show a friendly message instead of a JSON dump
+    if (qs.length === 1 && qs[0].type === 'raw') {
+      list.innerHTML = `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:7px;padding:14px;font-size:.85em;color:#856404">
+        ⚠ AI response could not be parsed as structured questions. Try again or reduce the count.<br>
+        <details style="margin-top:8px"><summary style="cursor:pointer;color:#6b7280">Show raw response</summary>
+        <pre style="white-space:pre-wrap;word-break:break-word;margin-top:6px;font-size:.82em">${escHtml(qs[0].question)}</pre></details>
+      </div>`;
+      return;
+    }
+    list.innerHTML = qs.map((q, i) => `
+        <div class="gen-question">
+          <div class="gq-type">${q.type}</div>
+          <div class="gq-text">Q${q.number}. ${escHtml(q.question)}</div>
+          ${q.options ? `<div class="gq-options">${q.options.map(o => escHtml(o)).join('<br>')}</div>` : ''}
+          ${q.answer ? `
+            <span class="gq-toggle" onclick="toggleGen(${i})">▶ Show answer</span>
+            <div class="gq-answer" id="gq-${i}">${escHtml(q.answer)}${q.hint ? '<br><em>Hint: '+escHtml(q.hint)+'</em>' : ''}</div>` : ''}
+        </div>`).join('');
   } catch(e) { status.textContent = '✗ ' + e.message; }
   btn.disabled = false;
 }
