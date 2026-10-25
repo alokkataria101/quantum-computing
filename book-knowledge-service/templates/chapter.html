@@ -311,10 +311,10 @@ function renderQuestions() {
     return `
     <div class="question-card">
       <div class="q-type">${q.question_type.replace(/_/g,' ')}</div>
-      <div class="q-text">${escHtml(q.question_text)}</div>
+      <div class="q-text">${fmtPhysics(q.question_text)}</div>
       ${(q.solution_text||q.answer_text) ? `
         <span class="q-toggle" onclick="toggleSol(this)">▶ Show answer</span>
-        <div class="q-solution">${escHtml(q.solution_text||q.answer_text)}</div>` : ''}
+        <div class="q-solution">${fmtPhysics(q.solution_text||q.answer_text)}</div>` : ''}
       <div class="q-pages">p.${q.page_start}${q.page_end!==q.page_start?'–'+q.page_end:''}
         <a href="#" style="color:#4a9edd;margin-left:6px" onclick="event.preventDefault();goToPage(${q.page_start})">Go to page</a>
       </div>
@@ -445,11 +445,11 @@ function renderBatch() {
     return `
     <div class="gen-question">
       <div class="gq-type">${q.type||'question'}</div>
-      <div class="gq-text"><strong>Q${genBatchIdx*count+i+1}.</strong> ${escHtml(q.question)}</div>
-      ${q.options ? `<div class="gq-options">${q.options.map(o=>'<div>'+escHtml(o)+'</div>').join('')}</div>` : ''}
+      <div class="gq-text"><strong>Q${genBatchIdx*count+i+1}.</strong> ${fmtPhysics(q.question)}</div>
+      ${q.options ? `<div class="gq-options">${q.options.map(o=>'<div>'+fmtPhysics(o)+'</div>').join('')}</div>` : ''}
       ${q.answer ? `
         <span class="gq-toggle" onclick="toggleGen(this)">▶ Show answer</span>
-        <div class="gq-answer">${escHtml(q.answer)}${q.hint?'<br><em style="color:#666">Hint: '+escHtml(q.hint)+'</em>':''}</div>` : ''}
+        <div class="gq-answer">${fmtPhysics(q.answer)}${q.hint?'<br><em style="color:#666">Hint: '+escHtml(q.hint)+'</em>':''}</div>` : ''}
       ${hasFigRef ? `<img class="gq-img" src="/books/${BOOK_ID}/pages/${imgPage}/render"
           alt="Page ${imgPage}" title="Page ${imgPage} — click to navigate"
           onclick="goToPage(${imgPage})" style="max-height:160px;width:auto;opacity:.9"/>` : ''}
@@ -497,6 +497,26 @@ function buildGenHTML(title, qs, countPerBatch) {
 function escHtml(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Physics text formatter — call AFTER escHtml to insert safe HTML tags
+function fmtPhysics(s) {
+  if (!s) return '';
+  s = escHtml(s);
+  // Fix any remaining PUA ≡ (U+F03D rendered as ≡) → =
+  s = s.replace(/≡/g, '=');
+  // Subscripts: Cp → C<sub>p</sub>, CV → C<sub>V</sub>, etc.
+  s = s.replace(/\bC([pV])\b/g, 'C<sub>$1</sub>');
+  // Common subscripted variables: v0, x0, m1, m2, F_net, a_x …
+  s = s.replace(/\b([a-zA-Z])_([a-zA-Z0-9]+)\b/g, '$1<sub>$2</sub>');
+  s = s.replace(/\b([a-zA-Z])([0-9])\b/g, '$1<sub>$2</sub>');
+  // Superscripts: m/s², kg·m², x², v³ (number after letter/unit)
+  s = s.replace(/([a-zA-Z\)])\^([0-9\-\+]+)/g, '$1<sup>$2</sup>');
+  // Unicode superscript digits already in text (²³)
+  s = s.replace(/²/g, '<sup>2</sup>').replace(/³/g, '<sup>3</sup>');
+  // Minus sign normalisation (en-dash or − → proper minus)
+  s = s.replace(/–/g, '−');
+  return s;
 }
 function triggerDownload(content, filename, type) {
   const a = document.createElement('a');
