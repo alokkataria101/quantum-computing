@@ -1,4 +1,4 @@
-# Quantum Portfolio Intelligence Platform (QPIP) — v11.0.1
+# Quantum Portfolio Intelligence Platform (QPIP)
 
 > **"Quantum-powered portfolio insights for faster risk analysis and better investment decisions."**
 
@@ -6,21 +6,18 @@ QPIP is a premium portfolio intelligence application for NSE investors. The quan
 
 ---
 
-## What's New in v11.0.1
+## What it does
 
-Complete redesign from the prior QAMO release. Same quantum engine, entirely new intelligence and UI layer.
-
-| Feature | v11.0.1 | v11.0.1 |
-|---|---|---|
-| Branding | QAMO — Quantum Market Observer | **QPIP — Quantum Portfolio Intelligence** |
-| Home screen | Track selector | **Quantum Decision Center** |
-| Signal output | BUY/SELL/HOLD + raw numbers | **Add / Buy / Hold / Reduce / Avoid Today** |
-| Navigation | Research track / Portfolio track | **9 investor-focused pages** |
-| Risk display | Raw volatility, qubit count | **Plain-English: Medium / High / Low** |
-| Portfolio Doctor | ✗ | **✅ Diagnosis + Prescription** |
-| What-if Simulator | ✗ | **✅ Instant re-score on weight change** |
-| Opportunity Scanner | ✗ | **✅ Ranked table by Opportunity Score** |
-| Quantum Insights | QPE / QAOA labels visible | **Market Stability / Hidden Correlation (no jargon)** |
+| Feature | Detail |
+|---|---|
+| Home screen | **Quantum Decision Center** |
+| Signal output | **Add / Buy / Hold / Reduce / Avoid Today** |
+| Navigation | **9 investor-focused pages** |
+| Risk display | **Plain-English: Medium / High / Low** |
+| Portfolio Doctor | **Diagnosis + Prescription** |
+| What-if Simulator | **Instant re-score on weight change** |
+| Opportunity Scanner | **Ranked table by Opportunity Score** |
+| Quantum Insights | **Market Stability / Hidden Correlation (no jargon)** |
 
 ---
 
@@ -56,15 +53,16 @@ Complete redesign from the prior QAMO release. Same quantum engine, entirely new
 ### Local Python setup
 
 ```bash
-cd version-11.0.1/stock-analysis
+cd stock-analyzer
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py --server.headless true --server.port 8501
+.venv/bin/streamlit run app.py --server.port 8501
 ```
 
 ### Docker container setup
 
 ```bash
-cd version-11.0.1/stock-analysis
+cd stock-analyzer
 docker build -t quantum-stock-analyzer:latest .
 docker run --rm -it -p 8501:8501 quantum-stock-analyzer:latest
 ```
@@ -72,7 +70,7 @@ docker run --rm -it -p 8501:8501 quantum-stock-analyzer:latest
 Or with Compose:
 
 ```bash
-cd version-11.0.1/stock-analysis
+cd stock-analyzer
 docker compose up --build
 ```
 
@@ -164,14 +162,14 @@ dashboard/                      ← UI pages
 ├── page_strategy.py
 └── page_doctor.py
 
-live/                           ← Quantum engine (reused in v11.0.1)
+live/                           ← Quantum engine
 ├── qamo_engine_v2.py           ← Core adaptive quantum pipeline
 ├── intraday_assistant.py       ← Per-symbol orchestrator
 ├── feed_with_fallback.py       ← Auto-fallback data quality
 ├── data_quality.py             ← Stage 0 validator
 └── [35 other modules]
 
-quantum/                        ← Daily analysis modules (reused from v6.2.0)
+quantum/                        ← Daily analysis modules
 ```
 
 ---
@@ -193,9 +191,9 @@ Users see plain language. Behind each metric is a real computation:
 
 ## Research Pages
 
-All v11.0.1 / v6.2.0 research pages are preserved under **⚙ Research & Settings**:
+Research pages are available under **⚙ Research & Settings**:
 QAMO v2 Adaptive, QAMO v1 Fixed, Model Comparison, Trajectory Experiment, Research Tracker, Classical vs Quantum, and the full Portfolio Analysis suite (Fidelity, Entanglement, QFT, QPE, VQC Optimizer).
 
 ---
 
-*QPIP v11.0.1 · Built on QAMO v11.0.1 quantum engine · IBM watsonx AI · Qiskit Aer*
+*Built on QAMO quantum engine · IBM watsonx AI (optional) · Qiskit Aer*
