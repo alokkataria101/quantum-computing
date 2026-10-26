@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>CV Summary — Research Projects</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 24px; color: #1f2328; background: #fff; font-size: 14px; line-height: 1.6; }
+  h1 { font-size: 1.15em; font-weight: 700; color: #1f2328; margin-bottom: 4px; }
+  .subtitle { font-size: .82em; color: #57606a; margin-bottom: 32px; }
+  .project { border: 1px solid #e5e7eb; border-radius: 8px; padding: 18px 20px; margin-bottom: 18px; background: #f7f8fa; }
+  .project-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .tag { font-size: .7em; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .tag-edtech   { background: #dbeafe; color: #1e40af; }
+  .tag-devops   { background: #dcfce7; color: #166534; }
+  .tag-ai       { background: #ede9fe; color: #5b21b6; }
+  .tag-quantum  { background: #fef9c3; color: #854d0e; }
+  .tag-finance  { background: #fee2e2; color: #991b1b; }
+  h2 { font-size: .97em; font-weight: 700; margin: 0; color: #1f2328; }
+  .repo { font-size: .75em; color: #57606a; font-family: monospace; margin-bottom: 10px; }
+  p  { margin: 0 0 8px; font-size: .88em; color: #1f2328; }
+  ul { margin: 6px 0 0 0; padding-left: 18px; }
+  li { font-size: .86em; color: #374151; margin-bottom: 3px; }
+  .cv-blurb { background: #fff; border-left: 3px solid #3b82d4; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: .88em; color: #1f2328; font-style: italic; }
+  .section-label { font-size: .7em; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #57606a; margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
+  footer { text-align: center; font-size: .72em; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 32px; }
+</style>
+</head>
+<body>
+
+<h1>Research &amp; Engineering Projects</h1>
+<p class="subtitle">Ready-to-paste CV summaries — copy the italic blurb for each project</p>
+
+<!-- ── Book Knowledge Service ── -->
+<div class="project">
+  <div class="project-header">
+    <span class="tag tag-edtech">EdTech</span>
+    <span class="tag tag-devops">DevOps</span>
+    <span class="tag tag-ai">IBM watsonx AI</span>
+    <h2>Book Knowledge Service</h2>
+  </div>
+  <div class="repo">github.com/alokkataria101/quantum-computing / book-knowledge-service/</div>
+  <p>A production-grade FastAPI microservice that transforms physics PDF textbooks into an intelligent, searchable knowledge base — built with DevOps and AI best practices throughout.</p>
+  <ul>
+    <li>Ingests physics textbooks as PDFs; extracts text, detects chapters, and builds a full-text search index (SQLite FTS5) — auto-loading new books dropped into a watch folder at startup</li>
+    <li>Pattern-based question extractor parses Examples, Exercises, Objective I/II, Short Answer sections with correct cross-page ordering and per-question page tracking</li>
+    <li>Web UI (FastAPI + Jinja2) with a page-by-page reader, question browser with type filters, page thumbnails for figure-referencing questions, and AI-powered RAG Q&amp;A</li>
+    <li>IBM watsonx (llama-3-3-70b) integration for chapter-grounded Q&amp;A and AI question generation (MCQ, numerical, short answer) with dynamic token budgeting and graceful degradation</li>
+    <li>Containerised with Docker + docker-compose; shared secrets architecture; Jinja2 auto-reload for zero-restart template iteration</li>
+  </ul>
+  <div class="section-label" style="margin-top:12px">CV Blurb</div>
+  <div class="cv-blurb">
+    Built a full-stack EdTech microservice (Python / FastAPI) that ingests physics PDF textbooks, indexes content with FTS5, and exposes a browser-based study platform with chapter-aware question extraction, page-level navigation, and IBM watsonx AI-powered RAG Q&amp;A and question generation. Deployed via Docker with a shared secrets architecture and zero-downtime template updates.
+  </div>
+</div>
+
+<!-- ── Stock Analyzer / QPIP ── -->
+<div class="project">
+  <div class="project-header">
+    <span class="tag tag-quantum">Quantum</span>
+    <span class="tag tag-finance">Finance</span>
+    <span class="tag tag-ai">IBM watsonx AI</span>
+    <h2>Quantum Portfolio Intelligence Platform (QPIP)</h2>
+  </div>
+  <div class="repo">github.com/alokkataria101/quantum-computing / stock-analyzer/</div>
+  <p>A 9-page Streamlit investment research dashboard combining quantum-inspired signal processing with IBM watsonx AI for NSE portfolio analysis.</p>
+  <ul>
+    <li>Quantum-inspired model uses quantum state similarity matching across historical market states to generate BUY / ADD / HOLD / REDUCE / AVOID signals with probability distributions</li>
+    <li>IBM watsonx (Granite / llama) generates natural-language explanations of each quantum signal — "why BUY?" — and writes full analyst-style investment research reports</li>
+    <li>Portfolio Doctor, What-if Simulator, Opportunity Scanner, intraday live feed, and self-evaluation engine with adaptive memory</li>
+    <li>Containerised with Docker; graceful AI fallback to rule-based explanations when credentials absent</li>
+  </ul>
+  <div class="section-label" style="margin-top:12px">CV Blurb</div>
+  <div class="cv-blurb">
+    Designed and built a quantum-inspired NSE portfolio intelligence platform (Python / Streamlit) that applies quantum state similarity matching to generate trading signals, augmented by IBM watsonx AI for natural-language signal explanation and investment report generation. Features live intraday feeds, adaptive memory, portfolio diagnostics, and a containerised DevOps deployment.
+  </div>
+</div>
+
+<!-- ── Quantum Computing Research ── -->
+<div class="project">
+  <div class="project-header">
+    <span class="tag tag-quantum">Quantum Computing</span>
+    <span class="tag tag-ai">Physics Research</span>
+    <h2>Quantum Computing &amp; Physics Research</h2>
+  </div>
+  <div class="repo">github.com/alokkataria101/quantum-computing / (Hamiltonian, VQE, QFT, phase-estimation)</div>
+  <p>End-to-end quantum computing experiments from first principles — Schrödinger equation solvers through to Qiskit circuit implementations on real quantum hardware simulators.</p>
+  <ul>
+    <li>Solved the time-independent Schrödinger equation numerically (finite differences) for particle-in-a-box and hydrogen atom; implemented Hartree–Fock and compared against VQE</li>
+    <li>Five-stage VQE tutorial: Hartree–Fock → helium → H₂ dissociation curve → CO₂ active space → CCSD benchmark; validates quantum chemistry on Qiskit Aer simulators</li>
+    <li>Quantum Fourier Transform applied to financial time series (NSE stocks via Yahoo Finance) and arbitrary mathematical functions — comparing QFT vs classical FFT frequency extraction</li>
+    <li>Full Quantum Phase Estimation implementation from single-qubit measurement to multi-qubit QPE; Grover's and Shor's algorithm demonstrations</li>
+  </ul>
+  <div class="section-label" style="margin-top:12px">CV Blurb</div>
+  <div class="cv-blurb">
+    Conducting independent research in quantum computing and quantum chemistry — implemented VQE for molecular ground-state energy estimation, Quantum Phase Estimation, Grover/Shor algorithms, and Quantum Fourier Transform analysis of financial time series using Qiskit. Bridges theoretical quantum physics (Schrödinger equation, Hartree–Fock) with practical circuit-level Qiskit implementations.
+  </div>
+</div>
+
+<!-- ── One-liner for profile summary ── -->
+<hr/>
+<div class="section-label">Profile Summary Line (for top of CV)</div>
+<div class="cv-blurb" style="font-style:normal; font-size:.9em">
+  Independent researcher and full-stack engineer applying quantum computing, IBM watsonx AI, and DevOps engineering to real-world problems in EdTech and quantitative finance — building production-grade microservices, quantum-inspired trading platforms, and AI-powered physics study tools, all open-sourced on GitHub.
+</div>
+
+<footer>Made with IBM Bob</footer>
+</body>
+</html>
