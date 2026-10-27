@@ -26,7 +26,7 @@ from ..auth import require_admin, require_user
 from ..ai_client import ai_generate, get_ai_client, RateLimitError
 from ..database import get_db
 from ..models import (
-    AskRequest, AskResponse,
+    AskRequest, AskResponse, AskSource,
     GenerateQuestionsRequest, GenerateQuestionsResponse, GeneratedQuestion,
 )
 
@@ -67,20 +67,31 @@ async def _fetch_chapter_pages(book_id: str, page_start: int, page_end: int) -> 
 
 
 async def _fts_pages(book_id: str, query: str, chapter_id: str | None, limit: int) -> list[dict]:
-    """Run FTS5 search and return top pages with their text."""
+    """Run FTS5 search and return the top pages (best match first) with their
+    text and chapter. Searches the whole book when chapter_id is None."""
     from ..indexer import full_text_search
     hits = await full_text_search(query, book_id=book_id, chapter_id=chapter_id, limit=limit)
     if not hits:
         return []
     db = await get_db()
-    page_nums = [h["page_number"] for h in hits]
+    page_nums = list(dict.fromkeys(h["page_number"] for h in hits))   # keep rank order
     placeholders = ",".join("?" * len(page_nums))
     async with db.execute(
-        f"SELECT page_number, text FROM pages WHERE book_id = ? AND page_number IN ({placeholders})",
+        f"SELECT p.page_number, p.text, p.chapter_id, "
+        f"       c.number AS chapter_number, c.title AS chapter_title "
+        f"FROM pages p LEFT JOIN chapters c ON c.chapter_id = p.chapter_id "
+        f"WHERE p.book_id = ? AND p.page_number IN ({placeholders})",
         [book_id, *page_nums],
     ) as cur:
-        rows = await cur.fetchall()
-    return [{"page_number": r["page_number"], "text": r["text"]} for r in rows]
+        rows = {r["page_number"]: dict(r) for r in await cur.fetchall()}
+    return [rows[n] for n in page_nums if n in rows]
+
+
+def _chapter_label(p: dict) -> str:
+    if p.get("chapter_number") is None:
+        return ""
+    title = " ".join((p.get("chapter_title") or "").split())[:80]
+    return f" — Chapter {p['chapter_number']}" + (f": {title}" if title else "")
 
 
 def _build_context(pages: list[dict], max_chars: int = 6000) -> tuple[str, list[int]]:
@@ -92,7 +103,7 @@ def _build_context(pages: list[dict], max_chars: int = 6000) -> tuple[str, list[
             continue
         if total + len(txt) > max_chars:
             txt = txt[: max_chars - total]
-        parts.append(f"[Page {p['page_number']}]\n{txt}")
+        parts.append(f"[Page {p['page_number']}{_chapter_label(p)}]\n{txt}")
         nums.append(p["page_number"])
         total += len(txt)
         if total >= max_chars:
@@ -136,7 +147,15 @@ async def ask_book(book_id: str, req: AskRequest):
             detail="No relevant pages found for your question. Try indexing the book first.",
         )
 
-    context, source_pages = _build_context(pages)
+    # A whole-book question pulls pages from several chapters, so allow more text
+    # than the 6000-char default (a page is ~3,400 chars).
+    context, source_pages = _build_context(pages, max_chars=12000)
+    sources = [
+        AskSource(page_number=p["page_number"], chapter_id=p["chapter_id"],
+                  chapter_number=p["chapter_number"],
+                  chapter_title=" ".join((p["chapter_title"] or "").split()) or None)
+        for p in pages if p["page_number"] in set(source_pages)
+    ]
 
     # Chapter title if restricted
     chapter_title = None
@@ -149,8 +168,10 @@ async def ask_book(book_id: str, req: AskRequest):
             chapter_title = crow["title"]
 
     prompt = f"""You are a physics and science tutor. Answer the student's question using ONLY the provided book text.
-Use proper scientific notation: write Greek letters (α β γ θ ω λ μ π), superscripts (x², v³), subscripts (v₀, F_net),
-fractions, and equations clearly. If the answer is not in the text, say so honestly.
+The text is made of excerpts from different pages and chapters, best match first; use whichever are relevant and
+mention the page number when it helps. Use proper scientific notation: write Greek letters (α β γ θ ω λ μ π),
+superscripts (x², v³), subscripts (v₀, F_net), fractions, and equations clearly. If the answer is not in the text,
+say so honestly.
 
 BOOK TEXT:
 {context}
@@ -170,6 +191,7 @@ ANSWER (clear, concise, well-formatted):"""
         question=req.question,
         answer=answer,
         source_pages=source_pages,
+        sources=sources,
         chapter_title=chapter_title,
         ai_enabled=True,
     )

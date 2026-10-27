@@ -203,14 +203,22 @@ class ExportRequest(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=5, description="Question to ask about the book")
-    chapter_id: Optional[str] = Field(None, description="Restrict search to this chapter")
+    chapter_id: Optional[str] = Field(None, description="Restrict search to this chapter (omit to search the whole book)")
     max_pages: int = Field(5, ge=1, le=20, description="Max pages to include as context")
+
+
+class AskSource(BaseModel):
+    page_number: int
+    chapter_id: Optional[str] = None
+    chapter_number: Optional[int] = None
+    chapter_title: Optional[str] = None
 
 
 class AskResponse(BaseModel):
     question: str
     answer: str
     source_pages: list[int]
+    sources: list[AskSource] = []          # where the answer came from (best match first)
     chapter_title: Optional[str] = None
     ai_enabled: bool
 

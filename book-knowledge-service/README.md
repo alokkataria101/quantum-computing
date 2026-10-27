@@ -13,7 +13,7 @@ Every page and API endpoint requires a login, except `/login`, `/auth/login`, `/
 | List books, read pages, view chapters, search | ✅ | ✅ |
 | View extracted questions, export | ✅ | ✅ |
 | **⚙ Extract** questions from a chapter | ✅ | ✅ |
-| **💬 Ask AI** about a chapter | ✅ | ✅ |
+| **💬 Ask AI** about the whole book or one chapter | ✅ | ✅ |
 | **📢 Shared** tab — questions the admin has published | ✅ | ✅ (read-only) |
 | **⚡ Generate** AI questions | ✅ | — |
 | Edit, share and unshare generated questions | ✅ | — |
@@ -86,7 +86,7 @@ The service ships with a built-in web interface — no API knowledge needed.
 - **Left half**: page-by-page reader — OCR images with keyboard navigation (← →), toggle extracted text
 - **Right half — tabs**:
   - **Questions** — filtered by type (Exercise / Example / MCQ / Short Answer…), show/hide answers, "Go to page" link
-  - **💬 Ask AI** — type any question, answered by watsonx grounded in this chapter's pages
+  - **💬 Ask AI** — type any question, answered by watsonx from the whole book (or just this chapter — your choice); the answer lists the chapters and pages it came from
   - **⚡ Generate** *(admin)* — pick type (MCQ / Short / Numerical / Mixed), difficulty, and count; AI generates questions with answers; edit and share them
   - **📢 Shared** — questions the admin has published for this chapter
 
@@ -276,7 +276,7 @@ Once the server is running, open **http://localhost:8000/ui** in your browser.
 3. **Chapter** — click **Open** on any chapter row
 4. **Read** — page images load on the left; use ← → keys to navigate
 5. **Questions** — switch to the **Questions** tab to browse extracted exercises and examples; filter by type
-6. **Ask AI** — switch to the **💬 Ask AI** tab, type a question, get an answer grounded in the chapter text
+6. **Ask AI** — switch to the **💬 Ask AI** tab, type a question, get an answer grounded in the book text, with the chapter and page of each source
 7. **Generate** — switch to **⚡ Generate**, pick type/difficulty/count, click Generate
 
 > AI features (Ask and Generate) require watsonx credentials in `.env.secrets`. Without them all other UI features work normally.
@@ -938,7 +938,7 @@ cd book-knowledge-service
 | GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | User | Export questions |
 | GET | `/books/{book_id}/questions/generate?topic=...` | Admin | Pattern-based topic questions |
 | POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | Admin (+ watsonx) | AI question generation |
-| POST | `/books/{book_id}/ask` | User (+ watsonx) | AI Q&A (RAG) |
+| POST | `/books/{book_id}/ask` | User (+ watsonx) | AI Q&A (RAG); omit `chapter_id` to search the whole book; response includes `sources` (chapter + page) |
 | GET | `/books/{book_id}/chapters/{ch_id}/shared` | User | List shared questions |
 | POST | `/books/{book_id}/chapters/{ch_id}/shared` | Admin | Share one or more questions |
 | PUT | `/shared/{share_id}` | Admin | Edit a shared question |

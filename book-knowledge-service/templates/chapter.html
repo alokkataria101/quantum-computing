@@ -187,14 +187,21 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
       <!-- Ask AI panel -->
       <div class="tab-panel" id="tab-ask">
         <div class="ask-wrap">
-          <p>Ask anything about this chapter — answered from the book text.</p>
+          <p>Ask anything about this book — answered from the book text, from any chapter.</p>
           <textarea id="ask-input" placeholder="e.g. What is Bernoulli's principle? Explain Pascal's law."></textarea>
           <div class="ask-controls">
+            <label style="font-size:.8em">Search in:
+              <select id="ask-scope">
+                <option value="book" selected>Whole book</option>
+                <option value="chapter">This chapter only</option>
+              </select>
+            </label>
             <label style="font-size:.8em">Pages:
               <select id="max-pages">
-                <option value="2">2</option>
-                <option value="3" selected>3</option>
-                <option value="5">5</option>
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="8">8</option>
+                <option value="12">12</option>
               </select>
             </label>
             <button class="btn btn-primary" id="ask-btn" onclick="askAI()">Ask</button>
@@ -414,14 +421,23 @@ async function askAI() {
   try {
     const res = await fetch(`/books/${BOOK_ID}/ask`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({question:q, chapter_id:CHAPTER_ID,
+      body: JSON.stringify({question:q,
+                            chapter_id: document.getElementById('ask-scope').value === 'chapter' ? CHAPTER_ID : null,
                             max_pages:parseInt(document.getElementById('max-pages').value)})
     });
     const d = await res.json();
     if (!res.ok) { status.textContent = '✗ ' + (d.detail||'Error'); }
     else {
       document.getElementById('answer-text').textContent = d.answer;
-      document.getElementById('answer-meta').textContent = `Sources: pages ${d.source_pages?d.source_pages.join(', '):'—'}`;
+      const srcs = d.sources || [];
+      document.getElementById('answer-meta').innerHTML = srcs.length
+        ? 'Sources: ' + srcs.map(s => {
+            const label = `${s.chapter_number!=null ? 'Ch ' + escHtml(String(s.chapter_number)) + ' — ' : ''}${escHtml(s.chapter_title||'')} · p.${s.page_number}`;
+            return s.chapter_id === CHAPTER_ID
+              ? `<a href="#" onclick="event.preventDefault();goToPage(${s.page_number})">${label}</a>`
+              : `<a href="/ui/books/${BOOK_ID}/chapters/${s.chapter_id}">${label}</a>`;
+          }).join(' &nbsp;|&nbsp; ')
+        : `Sources: pages ${d.source_pages&&d.source_pages.length?d.source_pages.join(', '):'—'}`;
       card.classList.add('visible'); status.textContent = '';
     }
   } catch(e) { status.textContent = '✗ ' + e.message; }
