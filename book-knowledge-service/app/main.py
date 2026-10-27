@@ -17,7 +17,7 @@ from . import auth as auth_module
 from .auth import User, page_admin, page_user
 from .config import settings
 from .database import init_db, close_db, get_db
-from .routers import books, index, questions, jobs_export, ai
+from .routers import books, index, questions, jobs_export, ai, shared
 from .routers import auth as auth_router
 
 logging.basicConfig(
@@ -147,6 +147,7 @@ app.include_router(index.router)
 app.include_router(questions.router)
 app.include_router(jobs_export.router)
 app.include_router(ai.router)
+app.include_router(shared.router)
 
 
 # ── HTML page viewer ──────────────────────────────────────────────────────────

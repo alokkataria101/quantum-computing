@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
@@ -248,3 +248,32 @@ class GenerateQuestionsResponse(BaseModel):
     total: int
     ai_enabled: bool
     note: Optional[str] = None         # shown when AI is disabled
+
+
+# ── Shared (admin-curated) questions ──────────────────────────────────────────
+
+class SharedQuestionIn(BaseModel):
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
+    type: str = Field("question", max_length=32)
+    options: Optional[list[Annotated[str, StringConstraints(max_length=1000)]]] = Field(None, max_length=10)
+    answer: Optional[str] = Field(None, max_length=5000)
+    hint: Optional[str] = Field(None, max_length=2000)
+    page_start: Optional[int] = Field(None, ge=1)
+
+
+class SharedQuestionsCreate(BaseModel):
+    questions: list[SharedQuestionIn] = Field(..., min_length=1, max_length=100)
+
+
+class SharedQuestion(SharedQuestionIn):
+    share_id: str
+    book_id: str
+    chapter_id: str
+    shared_by: str
+    shared_at: datetime
+    updated_at: datetime
+
+
+class SharedQuestionList(BaseModel):
+    questions: list[SharedQuestion]
+    total: int

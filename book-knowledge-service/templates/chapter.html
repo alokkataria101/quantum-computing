@@ -92,6 +92,17 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
 .gen-pagination button:disabled{opacity:.4;cursor:default}
 #gen-page-info{font-size:.78em;color:#6b7280;flex:1;text-align:center}
 .warn-card{background:#fff3cd;border:1px solid #ffc107;border-radius:7px;padding:12px 14px;font-size:.83em;color:#856404}
+
+/* ── Edit / share ── */
+.btn-danger{background:#fff;color:#b91c1c;border:1px solid #fca5a5}.btn-danger:hover{background:#fee2e2}
+.q-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.shared-flag{font-size:.74em;color:#059669}
+.edit-form{display:flex;flex-direction:column;gap:4px}
+.edit-form label{font-size:.74em;font-weight:600;color:#374151;margin-top:4px}
+.edit-form label small{font-weight:400;color:#9ca3af}
+.edit-form textarea,.edit-form input{width:100%;border:1px solid #d1d5db;border-radius:5px;padding:6px 8px;font-size:.82em;font-family:inherit;resize:vertical}
+.edit-form textarea:focus,.edit-form input:focus{outline:none;border-color:#7c5cd8}
+#shared-status{font-size:.8em;color:#6b7280;flex:1}
 </style>
 </head>
 <body>
@@ -141,10 +152,11 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
   <div class="info-pane">
     <div class="tabs">
       <div class="tab active" onclick="switchTab('questions',this)">Questions</div>
-      {% if user.is_admin %}
       <div class="tab" onclick="switchTab('ask',this)">💬 Ask AI</div>
+      {% if user.is_admin %}
       <div class="tab" onclick="switchTab('generate',this)">⚡ Generate</div>
       {% endif %}
+      <div class="tab" onclick="switchTab('shared',this)">📢 Shared</div>
     </div>
     <div class="tab-body">
 
@@ -162,13 +174,12 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
         <div class="q-toolbar">
           <span id="q-count"></span>
           <button class="btn btn-green btn-sm" onclick="downloadQuestions()">⬇ Download</button>
-          {% if user.is_admin %}<button class="btn btn-secondary btn-sm" onclick="extractQuestions()">⚙ Extract</button>{% endif %}
+          <button class="btn btn-secondary btn-sm" onclick="extractQuestions()">⚙ Extract</button>
           <span id="extract-status" style="font-size:.76em;color:#6b7280"></span>
         </div>
         <div id="q-list"><div class="no-q">Loading…</div></div>
       </div>
 
-      {% if user.is_admin %}
       <!-- Ask AI panel -->
       <div class="tab-panel" id="tab-ask">
         <div class="ask-wrap">
@@ -192,10 +203,11 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
         </div>
       </div>
 
+      {% if user.is_admin %}
       <!-- Generate panel -->
       <div class="tab-panel" id="tab-generate">
         <div class="gen-wrap">
-          <p>Generate AI questions from this chapter with page images embedded.</p>
+          <p>Generate AI questions, edit them if needed, then <strong>Share</strong> them so students can see them in the <em>Shared</em> tab.</p>
           <div class="gen-controls">
             <label>Type:
               <select id="gen-type">
@@ -224,6 +236,7 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
             <button class="btn btn-purple" id="gen-btn" onclick="generateQuestions(true)">⚡ Generate</button>
             <span id="gen-status"></span>
             <button class="btn btn-green btn-sm" id="dl-gen-btn" onclick="downloadGenerated()" style="display:none">⬇ Download</button>
+            <button class="btn btn-primary btn-sm" id="share-all-btn" onclick="shareBatch()" style="display:none">📢 Share all in batch</button>
           </div>
           <div id="gen-list"></div>
           <div class="gen-pagination" id="gen-pagination" style="display:none">
@@ -234,6 +247,15 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
         </div>
       </div>
       {% endif %}
+
+      <!-- Shared panel (everyone) -->
+      <div class="tab-panel" id="tab-shared">
+        <div class="gen-wrap">
+          <p>{% if user.is_admin %}Questions you have shared with students. Edit or unshare them here.{% else %}Questions shared by your teacher for this chapter.{% endif %}</p>
+          <div class="gen-toolbar"><span id="shared-status"></span></div>
+          <div id="shared-list"><div class="no-q">Loading…</div></div>
+        </div>
+      </div>
 
     </div><!-- tab-body -->
   </div><!-- info-pane -->
@@ -249,9 +271,16 @@ let currentPage  = PAGE_START;
 let allQuestions = [];
 let activeFilter = 'all';
 
+const IS_ADMIN   = {{ 'true' if user.is_admin else 'false' }};
+
 // Generated questions state
 let genBatches   = [];   // array of batches (each batch is array of questions)
 let genBatchIdx  = 0;
+let genEditIdx   = -1;   // index (within current batch) of the question being edited
+
+// Shared questions state
+let sharedQs     = [];
+let sharedEditIdx = -1;
 
 /* ────────────────────────── Reader ────────────────────────────────────────── */
 function changePage(d) { goToPage(currentPage + d); }
@@ -287,6 +316,7 @@ function switchTab(name, el) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'shared') loadShared();   // pick up anything newly shared
 }
 
 /* ────────────────────────── Questions ──────────────────────────────────────── */
@@ -395,6 +425,7 @@ async function generateQuestions(isNew, direction) {
   const list = document.getElementById('gen-list');
   const pagination = document.getElementById('gen-pagination');
 
+  genEditIdx = -1;
   if (isNew) {
     genBatches = [];
     genBatchIdx = 0;
@@ -442,14 +473,23 @@ function renderBatch() {
   document.getElementById('gen-prev-btn').disabled = genBatchIdx === 0;
   document.getElementById('gen-page-info').textContent =
     `Batch ${genBatchIdx+1} · Q${genBatchIdx*count+1}–${genBatchIdx*count+qs.length}`;
+  document.getElementById('share-all-btn').style.display =
+    qs.some(q => !q._shared) ? 'inline-block' : 'none';
 
   list.innerHTML = qs.map((q, i) => {
+    if (i === genEditIdx) {
+      return `<div class="gen-question">${editFormHTML('g', q, `saveGenEdit(${i})`, 'cancelGenEdit()')}</div>`;
+    }
     // page_start is always set by the server (falls back to chapter start page)
     const imgPage = q.page_start || PAGE_START;
     const hasFigRef = /\b(figure|fig\.?|diagram|graph|table|chart|image|shown|following|below|above)\b/i.test(q.question);
+    const actions = q._shared
+      ? `<span class="shared-flag">✓ Shared — edit it in the Shared tab</span>`
+      : `<button class="btn btn-secondary btn-sm" onclick="editGen(${i})">✎ Edit</button>
+         <button class="btn btn-primary btn-sm" onclick="shareGen(${i})">📢 Share</button>`;
     return `
     <div class="gen-question">
-      <div class="gq-type">${q.type||'question'}</div>
+      <div class="gq-type">${escHtml(q.type||'question')}</div>
       <div class="gq-text"><strong>Q${genBatchIdx*count+i+1}.</strong> ${fmtPhysics(q.question)}</div>
       ${q.options ? `<div class="gq-options">${q.options.map(o=>'<div>'+fmtPhysics(o)+'</div>').join('')}</div>` : ''}
       ${q.answer ? `
@@ -458,7 +498,152 @@ function renderBatch() {
       ${hasFigRef ? `<img class="gq-img" src="/books/${BOOK_ID}/pages/${imgPage}/render"
           alt="Page ${imgPage}" title="Page ${imgPage} — click to navigate"
           onclick="goToPage(${imgPage})" style="max-height:160px;width:auto;opacity:.9"/>` : ''}
+      <div class="q-actions">${actions}</div>
     </div>`}).join('');
+}
+
+/* ────────────────────────── Edit + Share (admin) ─────────────────────────── */
+// Shared form used for both generated and already-shared questions.
+// `p` is an id prefix so the two lists never collide.
+function editFormHTML(p, q, saveCall, cancelCall) {
+  return `
+    <div class="edit-form">
+      <label>Question</label>
+      <textarea id="${p}-q" rows="3">${escHtml(q.question)}</textarea>
+      <label>Options <small>(one per line — leave empty if none)</small></label>
+      <textarea id="${p}-opts" rows="4">${escHtml((q.options||[]).join('\n'))}</textarea>
+      <label>Answer</label>
+      <textarea id="${p}-ans" rows="2">${escHtml(q.answer||'')}</textarea>
+      <label>Hint</label>
+      <input id="${p}-hint" value="${escHtml(q.hint||'')}"/>
+      <div class="q-actions">
+        <button class="btn btn-primary btn-sm" onclick="${saveCall}">Save</button>
+        <button class="btn btn-secondary btn-sm" onclick="${cancelCall}">Cancel</button>
+      </div>
+    </div>`;
+}
+function readEditForm(p) {
+  const question = document.getElementById(p + '-q').value.trim();
+  const options  = document.getElementById(p + '-opts').value.split('\n').map(s => s.trim()).filter(Boolean);
+  return {
+    question,
+    options: options.length ? options : null,
+    answer:  document.getElementById(p + '-ans').value.trim() || null,
+    hint:    document.getElementById(p + '-hint').value.trim() || null,
+  };
+}
+function toSharePayload(q) {
+  return {
+    question: q.question,
+    type: q.type || 'question',
+    options: (q.options && q.options.length) ? q.options : null,
+    answer: q.answer || null,
+    hint: q.hint || null,
+    page_start: q.page_start || null,
+  };
+}
+async function errText(res) {
+  const d = await res.json().catch(() => ({}));
+  return typeof d.detail === 'string' ? d.detail : `Request failed (${res.status})`;
+}
+
+function editGen(i) { genEditIdx = i; renderBatch(); }
+function cancelGenEdit() { genEditIdx = -1; renderBatch(); }
+function saveGenEdit(i) {
+  const f = readEditForm('g');
+  if (!f.question) { alert('Question text cannot be empty.'); return; }
+  Object.assign(genBatches[genBatchIdx][i], f);
+  genEditIdx = -1;
+  renderBatch();
+}
+
+async function postShare(items) {
+  const res = await fetch(`/books/${BOOK_ID}/chapters/${CHAPTER_ID}/shared`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({questions: items.map(toSharePayload)}),
+  });
+  if (!res.ok) throw new Error(await errText(res));
+}
+async function shareGen(i) {
+  const q = genBatches[genBatchIdx][i];
+  const status = document.getElementById('gen-status');
+  try {
+    await postShare([q]);
+    q._shared = true;
+    status.textContent = '✓ Shared with students.';
+    renderBatch(); loadShared();
+  } catch (e) { status.textContent = '✗ ' + e.message; }
+}
+async function shareBatch() {
+  const pending = (genBatches[genBatchIdx] || []).filter(q => !q._shared);
+  if (!pending.length) return;
+  const status = document.getElementById('gen-status');
+  try {
+    await postShare(pending);
+    pending.forEach(q => q._shared = true);
+    status.textContent = `✓ Shared ${pending.length} question${pending.length!==1?'s':''} with students.`;
+    renderBatch(); loadShared();
+  } catch (e) { status.textContent = '✗ ' + e.message; }
+}
+
+/* ────────────────────────── Shared tab ───────────────────────────────────── */
+async function loadShared() {
+  const res = await fetch(`/books/${BOOK_ID}/chapters/${CHAPTER_ID}/shared`);
+  if (!res.ok) return;
+  sharedQs = (await res.json()).questions || [];
+  sharedEditIdx = -1;
+  renderShared();
+}
+function renderShared() {
+  const list = document.getElementById('shared-list');
+  if (!sharedQs.length) {
+    list.innerHTML = `<div class="no-q">Nothing shared for this chapter yet.${IS_ADMIN ? '<br><small>Generate questions, then click 📢 Share.</small>' : ''}</div>`;
+    return;
+  }
+  list.innerHTML = sharedQs.map((q, i) => {
+    if (i === sharedEditIdx) {
+      return `<div class="gen-question">${editFormHTML('s', q, `saveSharedEdit(${i})`, 'cancelSharedEdit()')}</div>`;
+    }
+    const actions = IS_ADMIN ? `
+      <div class="q-actions">
+        <button class="btn btn-secondary btn-sm" onclick="editShared(${i})">✎ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="unshare(${i})">Unshare</button>
+      </div>` : '';
+    return `
+    <div class="gen-question">
+      <div class="gq-type">${escHtml(q.type||'question')}</div>
+      <div class="gq-text"><strong>Q${i+1}.</strong> ${fmtPhysics(q.question)}</div>
+      ${q.options ? `<div class="gq-options">${q.options.map(o=>'<div>'+fmtPhysics(o)+'</div>').join('')}</div>` : ''}
+      ${q.answer ? `
+        <span class="gq-toggle" onclick="toggleGen(this)">▶ Show answer</span>
+        <div class="gq-answer">${fmtPhysics(q.answer)}${q.hint?'<br><em style="color:#666">Hint: '+escHtml(q.hint)+'</em>':''}</div>` : ''}
+      ${q.page_start ? `<div class="q-pages">p.${q.page_start}
+        <a href="#" style="color:#7c5cd8;margin-left:6px" onclick="event.preventDefault();goToPage(${q.page_start})">Go to page</a></div>` : ''}
+      ${actions}
+    </div>`}).join('');
+}
+function editShared(i) { sharedEditIdx = i; renderShared(); }
+function cancelSharedEdit() { sharedEditIdx = -1; renderShared(); }
+async function saveSharedEdit(i) {
+  const f = readEditForm('s');
+  const status = document.getElementById('shared-status');
+  if (!f.question) { alert('Question text cannot be empty.'); return; }
+  const cur = sharedQs[i];
+  const res = await fetch(`/shared/${cur.share_id}`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(toSharePayload({...cur, ...f})),
+  });
+  if (!res.ok) { status.textContent = '✗ ' + await errText(res); return; }
+  status.textContent = '✓ Saved.';
+  loadShared();
+}
+async function unshare(i) {
+  if (!confirm('Remove this question from the students\' Shared list?')) return;
+  const status = document.getElementById('shared-status');
+  const res = await fetch(`/shared/${sharedQs[i].share_id}`, {method: 'DELETE'});
+  if (!res.ok) { status.textContent = '✗ ' + await errText(res); return; }
+  status.textContent = '✓ Unshared.';
+  loadShared();
 }
 
 function toggleGen(btn) {
@@ -532,6 +717,7 @@ function triggerDownload(content, filename, type) {
 }
 
 loadQuestions();
+loadShared();
 </script>
 </body>
 </html>

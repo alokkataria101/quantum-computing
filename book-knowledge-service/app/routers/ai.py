@@ -22,7 +22,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..auth import require_admin
+from ..auth import require_admin, require_user
 from ..ai_client import get_ai_client, RateLimitError
 from ..database import get_db
 from ..models import (
@@ -31,7 +31,7 @@ from ..models import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["AI (watsonx)"], dependencies=[Depends(require_admin)])
+router = APIRouter(tags=["AI (watsonx)"], dependencies=[Depends(require_user)])
 
 _AI_DISABLED_MSG = (
     "IBM watsonx AI is not configured. "
@@ -209,6 +209,7 @@ _DIFFICULTY_NOTES = {
 @router.post(
     "/books/{book_id}/chapters/{chapter_id}/generate-questions",
     response_model=GenerateQuestionsResponse,
+    dependencies=[Depends(require_admin)],
     summary="Generate AI questions from a chapter with proper notation",
     description=(
         "Reads the chapter's indexed text and asks IBM watsonx Granite to generate "

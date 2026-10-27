@@ -127,4 +127,24 @@ async def _create_schema(db: aiosqlite.Connection) -> None:
         updated_at  TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_jobs_book ON jobs(book_id);
+
+    -- ── Shared questions (admin-curated, visible to students) ─────────────────
+    -- chapter_id is deliberately NOT a foreign key: re-indexing replaces chapter
+    -- rows, which must not wipe questions an admin has edited and published.
+    -- Deleting the book still removes them (book_id cascade).
+    CREATE TABLE IF NOT EXISTS shared_questions (
+        share_id      TEXT PRIMARY KEY,
+        book_id       TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
+        chapter_id    TEXT NOT NULL,
+        question_type TEXT NOT NULL DEFAULT 'question',
+        question      TEXT NOT NULL,
+        options       TEXT,
+        answer        TEXT,
+        hint          TEXT,
+        page_start    INTEGER,
+        shared_by     TEXT NOT NULL,
+        shared_at     TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_shared_chapter ON shared_questions(book_id, chapter_id);
     """)

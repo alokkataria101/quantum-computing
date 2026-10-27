@@ -12,9 +12,15 @@ Every page and API endpoint requires a login, except `/login`, `/auth/login`, `/
 |---|:---:|:---:|
 | List books, read pages, view chapters, search | ✅ | ✅ |
 | View extracted questions, export | ✅ | ✅ |
+| **⚙ Extract** questions from a chapter | ✅ | ✅ |
+| **💬 Ask AI** about a chapter | ✅ | ✅ |
+| **📢 Shared** tab — questions the admin has published | ✅ | ✅ (read-only) |
+| **⚡ Generate** AI questions | ✅ | — |
+| Edit, share and unshare generated questions | ✅ | — |
 | Upload / delete / index books | ✅ | — |
-| Extract or generate questions (pattern + AI), Ask AI | ✅ | — |
 | Add students | ✅ | — |
+
+**Generate → edit → share → students see it.** On a chapter page the admin opens **⚡ Generate**, creates questions, and on each one can click **✎ Edit** (question, options, answer, hint) and **📢 Share** — or **Share all in batch**. Shared questions are saved in the database and appear in every user's **📢 Shared** tab for that chapter. The admin can edit or **Unshare** them there at any time. They survive re-indexing and are removed only when the book is deleted.
 
 **Credentials are plain-text files** (`username:password`, one per line, `#` comments allowed), kept in `storage/auth/` (git-ignored):
 
@@ -63,10 +69,11 @@ The service ships with a built-in web interface — no API knowledge needed.
 
 ### Chapter page (`/ui/books/{id}/chapters/{ch_id}`)
 - **Left half**: page-by-page reader — OCR images with keyboard navigation (← →), toggle extracted text
-- **Right half — 3 tabs**:
+- **Right half — tabs**:
   - **Questions** — filtered by type (Exercise / Example / MCQ / Short Answer…), show/hide answers, "Go to page" link
   - **💬 Ask AI** — type any question, answered by watsonx grounded in this chapter's pages
-  - **⚡ Generate** — pick type (MCQ / Short / Numerical / Mixed), difficulty, and count; AI generates questions with answers
+  - **⚡ Generate** *(admin)* — pick type (MCQ / Short / Numerical / Mixed), difficulty, and count; AI generates questions with answers; edit and share them
+  - **📢 Shared** — questions the admin has published for this chapter
 
 ---
 
@@ -910,13 +917,17 @@ cd book-knowledge-service
 | GET | `/books/{book_id}/pages/{n}` | User | Page text |
 | GET | `/books/{book_id}/pages/{n}/render` | User | Page as PNG |
 | GET | `/books/{book_id}/search?q=...` | User | Full-text search |
-| POST | `/books/{book_id}/chapters/{ch_id}/extract` | Admin | Start pattern extraction |
+| POST | `/books/{book_id}/chapters/{ch_id}/extract` | User | Start pattern extraction |
 | GET | `/books/{book_id}/chapters/{ch_id}/questions` | User | List extracted questions |
 | GET | `/jobs/{job_id}` | User | Job progress |
 | GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | User | Export questions |
 | GET | `/books/{book_id}/questions/generate?topic=...` | Admin | Pattern-based topic questions |
 | POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | Admin (+ watsonx) | AI question generation |
-| POST | `/books/{book_id}/ask` | Admin (+ watsonx) | AI Q&A (RAG) |
+| POST | `/books/{book_id}/ask` | User (+ watsonx) | AI Q&A (RAG) |
+| GET | `/books/{book_id}/chapters/{ch_id}/shared` | User | List shared questions |
+| POST | `/books/{book_id}/chapters/{ch_id}/shared` | Admin | Share one or more questions |
+| PUT | `/shared/{share_id}` | Admin | Edit a shared question |
+| DELETE | `/shared/{share_id}` | Admin | Unshare |
 | GET | `/viewer/{book_id}?page=n` | User | HTML page viewer |
 | GET | `/login` | Public | Login page |
 
@@ -948,6 +959,7 @@ book-knowledge-service/
 │       ├── index.py          /index, /chapters, /pages, /search
 │       ├── questions.py      /questions, /extract, /generate (pattern)
 │       ├── ai.py             /ask, /generate-questions (watsonx)
+│       ├── shared.py         admin-shared questions: list / share / edit / unshare
 │       └── jobs_export.py    /jobs, /export
 ├── templates/
 │   ├── login.html            sign-in page
@@ -957,7 +969,8 @@ book-knowledge-service/
 ├── tests/
 │   ├── conftest.py
 │   ├── test_api.py
-│   └── test_auth.py          login, roles, student mgmt, book delete
+│   ├── test_auth.py          login, roles, student mgmt, book delete
+│   └── test_shared.py        share / edit / unshare, student view, page tabs per role
 ├── storage/                  git-ignored
 │   ├── auth/                 admins.txt, students.txt (plain-text credentials)
 │   ├── books/                uploaded PDFs

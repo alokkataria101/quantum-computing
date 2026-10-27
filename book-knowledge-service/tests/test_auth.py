@@ -91,6 +91,8 @@ async def test_password_with_colon(anon_client):
     ("GET", "/jobs/x"),
     ("GET", "/books/x/export"),
     ("GET", "/auth/students"),
+    ("GET", "/books/x/chapters/c/shared"),
+    ("DELETE", "/shared/x"),
 ])
 async def test_anonymous_gets_401(anon_client, method, url):
     r = await anon_client.request(method, url)
@@ -101,6 +103,8 @@ async def test_anonymous_gets_401(anon_client, method, url):
     ("POST", "/books/x/ask"),
     ("POST", "/books/x/chapters/c/generate-questions"),
     ("POST", "/auth/students"),
+    ("POST", "/books/x/chapters/c/shared"),
+    ("PUT", "/shared/x"),
 ])
 async def test_anonymous_gets_401_for_json_posts(anon_client, method, url):
     r = await anon_client.request(method, url, json={})
@@ -130,11 +134,25 @@ async def test_student_cannot_upload_delete_or_generate(student_client):
     assert (await _upload(student_client)).status_code == 403
     assert (await student_client.delete("/books/x")).status_code == 403
     assert (await student_client.post("/books/x/index")).status_code == 403
-    assert (await student_client.post("/books/x/chapters/c/extract")).status_code == 403
     assert (await student_client.get("/books/x/questions/generate?topic=t")).status_code == 403
-    assert (await student_client.post("/books/x/ask", json={"question": "what is it?"})).status_code == 403
     r = await student_client.post("/books/x/chapters/c/generate-questions", json={})
     assert r.status_code == 403
+
+
+async def test_student_can_extract_and_ask(student_client):
+    # Allowed through the role check — the unknown ids then fail on their own
+    # merits (404 / 503 when watsonx is not configured), never 401/403.
+    r = await student_client.post("/books/x/chapters/c/extract")
+    assert r.status_code == 404
+    r = await student_client.post("/books/x/ask", json={"question": "what is it?"})
+    assert r.status_code not in (401, 403)
+
+
+async def test_student_cannot_write_shared(student_client):
+    body = {"questions": [{"question": "Q?"}]}
+    assert (await student_client.post("/books/x/chapters/c/shared", json=body)).status_code == 403
+    assert (await student_client.put("/shared/x", json={"question": "Q?"})).status_code == 403
+    assert (await student_client.delete("/shared/x")).status_code == 403
 
 
 async def test_student_cannot_manage_students(student_client):

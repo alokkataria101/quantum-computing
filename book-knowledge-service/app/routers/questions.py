@@ -75,7 +75,6 @@ async def get_questions(
 @router.post(
     "/books/{book_id}/chapters/{chapter_id}/extract",
     response_model=JobRecord,
-    dependencies=[Depends(require_admin)],
 )
 async def start_extraction(book_id: str, chapter_id: str):
     chapter = await _get_chapter(book_id, chapter_id)
