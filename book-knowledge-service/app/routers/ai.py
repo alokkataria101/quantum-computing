@@ -23,7 +23,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import require_admin, require_user
-from ..ai_client import get_ai_client, RateLimitError
+from ..ai_client import ai_generate, get_ai_client, RateLimitError
 from ..database import get_db
 from ..models import (
     AskRequest, AskResponse,
@@ -160,7 +160,7 @@ STUDENT QUESTION: {req.question}
 ANSWER (clear, concise, well-formatted):"""
 
     try:
-        answer = ai.generate(prompt)
+        answer = await ai_generate(ai, prompt)
     except RateLimitError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     if not answer:
@@ -282,7 +282,7 @@ JSON OUTPUT:"""
     max_tokens = min(max(tokens_per_q * req.count + 200, 800), 3000)
 
     try:
-        raw = ai.generate(prompt, max_new_tokens=max_tokens)
+        raw = await ai_generate(ai, prompt, max_new_tokens=max_tokens)
     except RateLimitError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     if not raw:

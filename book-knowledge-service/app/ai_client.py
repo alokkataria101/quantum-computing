@@ -6,6 +6,7 @@ AI endpoints return HTTP 503 with a clear message.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -109,6 +110,22 @@ class AIClient:
 
 class RateLimitError(Exception):
     """Raised when watsonx returns HTTP 429 Too Many Requests."""
+
+
+# At most this many watsonx calls run at once; the rest wait their turn instead
+# of all hitting the API together and getting 429s. Override with AI_MAX_CONCURRENCY.
+AI_MAX_CONCURRENCY = max(1, int(os.getenv("AI_MAX_CONCURRENCY", "4")))
+_ai_slots: asyncio.Semaphore | None = None
+
+
+async def ai_generate(client: AIClient, prompt: str, max_new_tokens: int | None = None) -> str | None:
+    """Run the (blocking) watsonx call in a worker thread so the event loop - and
+    every other user - keeps being served, with a cap on simultaneous calls."""
+    global _ai_slots
+    if _ai_slots is None:
+        _ai_slots = asyncio.Semaphore(AI_MAX_CONCURRENCY)
+    async with _ai_slots:
+        return await asyncio.to_thread(client.generate, prompt, max_new_tokens)
 
 
 # Singleton — one connection shared across all requests

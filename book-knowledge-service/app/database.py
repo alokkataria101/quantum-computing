@@ -147,4 +147,12 @@ async def _create_schema(db: aiosqlite.Connection) -> None:
         updated_at    TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_shared_chapter ON shared_questions(book_id, chapter_id);
+
+    -- Who a shared question is assigned to. No rows for a share_id = every student.
+    CREATE TABLE IF NOT EXISTS shared_question_assignees (
+        share_id  TEXT NOT NULL REFERENCES shared_questions(share_id) ON DELETE CASCADE,
+        student   TEXT NOT NULL,
+        PRIMARY KEY (share_id, student)
+    );
+    CREATE INDEX IF NOT EXISTS idx_assignee_student ON shared_question_assignees(student);
     """)

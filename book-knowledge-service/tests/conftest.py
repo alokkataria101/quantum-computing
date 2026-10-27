@@ -18,9 +18,9 @@ from app.database import init_db, close_db
 
 def _reset_auth() -> None:
     """Fresh credential files (default admin only) and no live sessions."""
-    shutil.rmtree(settings.auth_dir, ignore_errors=True)
-    auth_module._sessions.clear()
+    shutil.rmtree(settings.auth_dir, ignore_errors=True)   # also drops sessions.db
     auth_module.ensure_auth_files()
+    auth_module.clear_sessions()
 
 
 async def _login(ac: AsyncClient, username: str, password: str, role: str) -> None:

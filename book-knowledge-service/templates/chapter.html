@@ -96,6 +96,10 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
 /* ── Edit / share ── */
 .btn-danger{background:#fff;color:#b91c1c;border:1px solid #fca5a5}.btn-danger:hover{background:#fee2e2}
 .q-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.assign-box{border:1px solid #e5e7eb;border-radius:7px;background:#f7f8fa;padding:8px 10px;margin-bottom:8px;font-size:.8em}
+.assign-box label{display:flex;align-items:center;gap:5px;cursor:pointer}
+#student-picks{display:none;margin-top:6px;max-height:120px;overflow-y:auto;border-top:1px solid #e5e7eb;padding-top:6px;columns:2}
+#student-picks label{break-inside:avoid;padding:1px 0}
 .shared-flag{font-size:.74em;color:#059669}
 .edit-form{display:flex;flex-direction:column;gap:4px}
 .edit-form label{font-size:.74em;font-weight:600;color:#374151;margin-top:4px}
@@ -231,6 +235,12 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
                 <option value="10">10</option>
               </select>
             </label>
+          </div>
+          <div class="assign-box">
+            <strong>Share with:</strong>
+            <label><input type="radio" name="assign-mode" value="all" checked onchange="onAssignMode()"/> All students</label>
+            <label><input type="radio" name="assign-mode" value="some" onchange="onAssignMode()"/> Selected students <span id="pick-count" style="color:#6b7280"></span></label>
+            <div id="student-picks"></div>
           </div>
           <div class="gen-toolbar">
             <button class="btn btn-purple" id="gen-btn" onclick="generateQuestions(true)">⚡ Generate</button>
@@ -557,10 +567,37 @@ function saveGenEdit(i) {
   renderBatch();
 }
 
+// Student picker: every student is listed; the admin shares with all or a subset.
+async function loadStudentPicker() {
+  const box = document.getElementById('student-picks');
+  if (!box) return;
+  const res = await fetch('/auth/students');
+  if (!res.ok) { box.innerHTML = '<span class="err">Could not load students.</span>'; return; }
+  const d = await res.json();
+  box.innerHTML = d.students.length
+    ? d.students.map(n => `<label><input type="checkbox" class="stu-pick" value="${escHtml(n)}" onchange="onAssignMode()"/> ${escHtml(n)}</label>`).join('')
+    : '<span style="color:#9ca3af">No students yet — add some on the Students page.</span>';
+}
+function selectedStudents() {
+  const mode = document.querySelector('input[name="assign-mode"]:checked');
+  if (!mode || mode.value === 'all') return null;
+  return [...document.querySelectorAll('.stu-pick:checked')].map(c => c.value);
+}
+function onAssignMode() {
+  const mode = document.querySelector('input[name="assign-mode"]:checked').value;
+  document.getElementById('student-picks').style.display = mode === 'some' ? 'block' : 'none';
+  const n = document.querySelectorAll('.stu-pick:checked').length;
+  document.getElementById('pick-count').textContent = mode === 'some' ? `(${n} selected)` : '';
+}
+
 async function postShare(items) {
+  const students = selectedStudents();
+  if (students && !students.length) throw new Error('Pick at least one student, or choose "All students".');
+  const body = {questions: items.map(toSharePayload)};
+  if (students) body.students = students;
   const res = await fetch(`/books/${BOOK_ID}/chapters/${CHAPTER_ID}/shared`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({questions: items.map(toSharePayload)}),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await errText(res));
 }
@@ -570,7 +607,7 @@ async function shareGen(i) {
   try {
     await postShare([q]);
     q._shared = true;
-    status.textContent = '✓ Shared with students.';
+    status.textContent = '✓ Shared with ' + (selectedStudents() ? 'selected students.' : 'all students.');
     renderBatch(); loadShared();
   } catch (e) { status.textContent = '✗ ' + e.message; }
 }
@@ -581,7 +618,7 @@ async function shareBatch() {
   try {
     await postShare(pending);
     pending.forEach(q => q._shared = true);
-    status.textContent = `✓ Shared ${pending.length} question${pending.length!==1?'s':''} with students.`;
+    status.textContent = `✓ Shared ${pending.length} question${pending.length!==1?'s':''} with ` + (selectedStudents() ? 'selected students.' : 'all students.');
     renderBatch(); loadShared();
   } catch (e) { status.textContent = '✗ ' + e.message; }
 }
@@ -617,6 +654,7 @@ function renderShared() {
       ${q.answer ? `
         <span class="gq-toggle" onclick="toggleGen(this)">▶ Show answer</span>
         <div class="gq-answer">${fmtPhysics(q.answer)}${q.hint?'<br><em style="color:#666">Hint: '+escHtml(q.hint)+'</em>':''}</div>` : ''}
+      ${IS_ADMIN ? `<div class="q-pages">Assigned to: ${q.assigned_to && q.assigned_to.length ? escHtml(q.assigned_to.join(', ')) : 'all students'}</div>` : ''}
       ${q.page_start ? `<div class="q-pages">p.${q.page_start}
         <a href="#" style="color:#7c5cd8;margin-left:6px" onclick="event.preventDefault();goToPage(${q.page_start})">Go to page</a></div>` : ''}
       ${actions}
@@ -718,6 +756,7 @@ function triggerDownload(content, filename, type) {
 
 loadQuestions();
 loadShared();
+if (IS_ADMIN) loadStudentPicker();
 </script>
 </body>
 </html>

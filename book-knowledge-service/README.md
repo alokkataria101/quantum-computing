@@ -31,7 +31,21 @@ storage/auth/students.txt    # appended to when an admin adds a student
 
 > **Change the default admin password** by editing `storage/auth/admins.txt`. The files are re-read on every login, so edits apply without a restart. Passwords are stored unhashed by design — fine for local use, not for a public deployment (use HTTPS and a reverse proxy at minimum).
 
-Sign in at **http://localhost:8000/login** (choose *Admin* or *Student*). Admins get a **Students** link in the header to add students (name + password → appended to `students.txt`) and a **Delete** button on each book. Sessions are kept in memory, last 12 hours and end on server restart.
+Sign in at **http://localhost:8000/login** (choose *Admin* or *Student*). Admins get a **Students** link in the header to add students (name + password → appended to `students.txt`) and a **Delete** button on each book. Sessions last 12 hours and are stored (token hashed) in `storage/auth/sessions.db`, so they survive a restart and are shared by every server worker.
+
+### Many users at once
+
+Any number of users can be logged in at the same time, each with their own session. Slow work (watsonx calls, PDF indexing/rendering, extraction, export) runs in worker threads, so it never freezes the site for other users. To use more CPU cores, run several worker processes — logins work across all of them:
+
+```bash
+.venv/bin/uvicorn app.main:app --port 8000 --workers 4      # no --reload with --workers
+```
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `AI_MAX_CONCURRENCY` | `4` | Max simultaneous watsonx calls **per worker**; extra requests wait their turn instead of hitting 429 |
+
+Notes: PyMuPDF work is serialised within one worker (it is single-threaded), so extra workers are what give parallel PDF rendering. Only run the PDF indexing job from one place at a time; the SQLite database is shared by all workers.
 
 From the command line:
 
@@ -53,6 +67,7 @@ The service ships with a built-in web interface — no API knowledge needed.
 |-----|-------------|
 | **http://localhost:8000/login** | Sign in as admin or student |
 | **http://localhost:8000/ui/students** | Add students *(admin only)* |
+| **http://localhost:8000/ui/tasks** | Student: *My Tasks* (questions assigned to me). Admin: everything shared, and with whom |
 | **http://localhost:8000/ui** | Library home — all books, upload, index |
 | **http://localhost:8000/ui/books/{book_id}** | Book detail — chapters list, search, re-index |
 | **http://localhost:8000/ui/books/{book_id}/chapters/{chapter_id}** | Chapter page — reader, questions, AI ask |
@@ -928,6 +943,7 @@ cd book-knowledge-service
 | POST | `/books/{book_id}/chapters/{ch_id}/shared` | Admin | Share one or more questions |
 | PUT | `/shared/{share_id}` | Admin | Edit a shared question |
 | DELETE | `/shared/{share_id}` | Admin | Unshare |
+| GET | `/tasks` | User | Student: questions assigned to me. Admin: everything shared |
 | GET | `/viewer/{book_id}?page=n` | User | HTML page viewer |
 | GET | `/login` | Public | Login page |
 

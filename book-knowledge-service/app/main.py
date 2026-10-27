@@ -41,7 +41,7 @@ async def _autoload_intake_books() -> None:
 
     from .database import get_db as _get_db
     from .storage import save_uploaded_pdf, compute_sha256, book_path
-    from .pdf_processor import extract_pdf_meta, extract_pages
+    from .pdf_processor import extract_pdf_meta, extract_pages, run_pdf
     from .chapter_parser import detect_chapters
     from .indexer import upsert_pages, upsert_chapters, rebuild_fts, update_book_status
 
@@ -63,7 +63,7 @@ async def _autoload_intake_books() -> None:
             await save_uploaded_pdf(data, book_id)
 
             try:
-                meta = extract_pdf_meta(book_path(book_id))
+                meta = await run_pdf(extract_pdf_meta, book_path(book_id))
                 title       = meta.title or pdf_path.stem
                 author      = meta.author or ""
                 total_pages = meta.total_pages
@@ -87,11 +87,11 @@ async def _autoload_intake_books() -> None:
             async def _index(bid: str = book_id, path: Path = book_path(book_id)) -> None:
                 try:
                     await update_book_status(bid, "indexing")
-                    meta2   = extract_pdf_meta(path)
-                    pages   = extract_pages(path, ocr_enabled=settings.ocr_enabled,
+                    meta2   = await run_pdf(extract_pdf_meta, path)
+                    pages   = await run_pdf(extract_pages, path, ocr_enabled=settings.ocr_enabled,
                                             ocr_language=settings.ocr_language,
                                             dpi=settings.render_dpi)
-                    chaps   = detect_chapters(bid, meta2, pages)
+                    chaps   = await asyncio.to_thread(detect_chapters, bid, meta2, pages)
                     await upsert_chapters(chaps)
                     ch_map  = {pn: ch.chapter_id
                                for ch in chaps
@@ -240,6 +240,13 @@ async def login_page(request: Request):
 @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
 async def ui_home(request: Request, user: User = Depends(page_user)):
     return templates.TemplateResponse(request=request, name="index.html", context={"user": user})
+
+
+# ── UI — Assigned tasks (student: mine; admin: everything shared) ─────────────
+
+@app.get("/ui/tasks", response_class=HTMLResponse, include_in_schema=False)
+async def ui_tasks(request: Request, user: User = Depends(page_user)):
+    return templates.TemplateResponse(request=request, name="tasks.html", context={"user": user})
 
 
 # ── UI — Student management (admin only) ─────────────────────────────────────

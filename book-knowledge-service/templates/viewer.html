@@ -51,6 +51,7 @@ body{margin:0;font-family:system-ui,sans-serif;background:#f0f0f0;display:flex;h
 
 <div id="sidebar">
   <h2>📚 {{ book.title[:30] }}{% if book.title|length > 30 %}…{% endif %}</h2>
+  <a href="/ui/books/{{ book.book_id }}" style="display:block;padding:8px 16px;color:#8fa0b0;text-decoration:none;font-size:.85em;border-bottom:1px solid #2c3e50">‹ Back to book</a>
   <div class="book-meta">{{ book.author }}<br>{{ book.total_pages }} pages</div>
   <div id="chapter-list">
     {% for ch in chapters %}

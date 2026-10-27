@@ -1,4 +1,4 @@
-"""app/auth.py – plain-text credential files, in-memory sessions, FastAPI guards.
+"""app/auth.py – plain-text credential files, shared (SQLite) sessions, FastAPI guards.
 
 Credentials live in two local text files (one ``username:password`` per line,
 ``#`` comments and blank lines ignored):
@@ -12,11 +12,13 @@ restart.  Passwords are stored in plain text by design (local/prototype use).
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 import os
 import re
 import secrets
+import sqlite3
 import threading
 import time
 from dataclasses import dataclass
@@ -155,32 +157,82 @@ def add_student(username: str, password: str) -> None:
     logger.info("Student '%s' added.", username)
 
 
-# ── Sessions (in memory; cleared on restart) ─────────────────────────────────
+# ── Sessions ─────────────────────────────────────────────────────────────────
+# Stored in a small SQLite file (<STORAGE_DIR>/auth/sessions.db) rather than in
+# process memory, so every uvicorn worker sees the same logins and sessions
+# survive a restart. Only a hash of the token is stored.
 
-_sessions: dict[str, tuple[User, float]] = {}
+def _session_conn() -> sqlite3.Connection:
+    settings.auth_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(settings.auth_dir / "sessions.db", timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS sessions ("
+        " token_hash TEXT PRIMARY KEY, username TEXT NOT NULL,"
+        " role TEXT NOT NULL, expires REAL NOT NULL)"
+    )
+    return conn
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def create_session(user: User) -> str:
     token = secrets.token_urlsafe(32)
-    _sessions[token] = (user, time.time() + SESSION_TTL_SECONDS)
+    now = time.time()
+    conn = _session_conn()
+    try:
+        with conn:
+            conn.execute("DELETE FROM sessions WHERE expires < ?", (now,))
+            conn.execute(
+                "INSERT INTO sessions VALUES (?,?,?,?)",
+                (_hash_token(token), user.username, user.role, now + SESSION_TTL_SECONDS),
+            )
+    finally:
+        conn.close()
     return token
 
 
 def destroy_session(token: str | None) -> None:
-    if token:
-        _sessions.pop(token, None)
+    if not token:
+        return
+    conn = _session_conn()
+    try:
+        with conn:
+            conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash_token(token),))
+    finally:
+        conn.close()
+
+
+def clear_sessions() -> None:
+    conn = _session_conn()
+    try:
+        with conn:
+            conn.execute("DELETE FROM sessions")
+    finally:
+        conn.close()
 
 
 def current_user(request: Request) -> User | None:
     token = request.cookies.get(SESSION_COOKIE)
-    entry = _sessions.get(token) if token else None
-    if not entry:
+    if not token:
         return None
-    user, expires = entry
-    if expires < time.time():
-        _sessions.pop(token, None)
-        return None
-    return user
+    conn = _session_conn()
+    try:
+        row = conn.execute(
+            "SELECT username, role, expires FROM sessions WHERE token_hash = ?",
+            (_hash_token(token),),
+        ).fetchone()
+        if not row:
+            return None
+        if row[2] < time.time():
+            with conn:
+                conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash_token(token),))
+            return None
+        return User(username=row[0], role=row[1])
+    finally:
+        conn.close()
 
 
 # ── FastAPI dependencies ─────────────────────────────────────────────────────

@@ -263,6 +263,8 @@ class SharedQuestionIn(BaseModel):
 
 class SharedQuestionsCreate(BaseModel):
     questions: list[SharedQuestionIn] = Field(..., min_length=1, max_length=100)
+    # Students who get the questions. Omitted/null = every student.
+    students: Optional[list[str]] = Field(None, min_length=1, max_length=1000)
 
 
 class SharedQuestion(SharedQuestionIn):
@@ -272,8 +274,20 @@ class SharedQuestion(SharedQuestionIn):
     shared_by: str
     shared_at: datetime
     updated_at: datetime
+    assigned_to: list[str] = []            # empty = every student
 
 
 class SharedQuestionList(BaseModel):
     questions: list[SharedQuestion]
+    total: int
+
+
+class AssignedTask(SharedQuestion):
+    book_title: Optional[str] = None
+    chapter_number: Optional[int] = None
+    chapter_title: Optional[str] = None
+
+
+class AssignedTaskList(BaseModel):
+    tasks: list[AssignedTask]
     total: int

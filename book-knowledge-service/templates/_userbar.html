@@ -1,5 +1,8 @@
-<span style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0;font-size:.8em;color:#8fa0b0;white-space:nowrap">
+<span style="margin-left:auto;display:flex;align-items:center;gap:12px;flex-shrink:0;font-size:.8em;color:#8fa0b0;white-space:nowrap">
+  <a href="#" id="back-link" onclick="event.preventDefault();goBack()" style="display:none;color:#e0e6f0;text-decoration:none;border:1px solid #3d5166;border-radius:5px;padding:3px 10px">‹ Back</a>
   <span>{{ user.username }} · {{ user.role }}</span>
+  <a href="/ui" style="color:#8fa0b0;text-decoration:none">Library</a>
+  <a href="/ui/tasks" style="color:#8fa0b0;text-decoration:none">{% if user.is_admin %}Tasks{% else %}My Tasks{% endif %}</a>
   {% if user.is_admin %}<a href="/ui/students" style="color:#8fa0b0;text-decoration:none">Students</a>{% endif %}
   <a href="#" onclick="event.preventDefault();logout()" style="color:#8fa0b0;text-decoration:none">Logout</a>
 </span>
@@ -8,4 +11,13 @@ async function logout() {
   await fetch('/auth/logout', {method:'POST'});
   location.href = '/login';
 }
+// One step back in this tab's history; if the page was opened directly, go up
+// a level instead (chapter -> book -> library).
+function goBack() {
+  const p = location.pathname;
+  if (history.length > 1 && document.referrer.startsWith(location.origin)) { history.back(); return; }
+  const m = p.match(/^(\/ui\/books\/[^/]+)\/chapters\//);
+  location.href = m ? m[1] : '/ui';
+}
+if (location.pathname !== '/ui') document.getElementById('back-link').style.display = 'inline-block';
 </script>

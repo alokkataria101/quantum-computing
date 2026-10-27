@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -25,6 +27,21 @@ except ImportError:
     OCR_AVAILABLE = False
 
 from .config import settings
+
+# PyMuPDF is initialised single-threaded (mupdf.reinit_singlethreaded), so only
+# one call may touch it at a time within a process.
+_pdf_lock = threading.Lock()
+
+
+def _locked(fn, *args, **kwargs):
+    with _pdf_lock:
+        return fn(*args, **kwargs)
+
+
+async def run_pdf(fn, *args, **kwargs):
+    """Run a blocking PyMuPDF function in a worker thread (serialised by a lock),
+    so a slow index/render never freezes the web server for other users."""
+    return await asyncio.to_thread(_locked, fn, *args, **kwargs)
 
 
 @dataclass

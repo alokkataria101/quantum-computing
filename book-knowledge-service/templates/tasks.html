@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>{% if user.is_admin %}Tasks{% else %}My Tasks{% endif %} — Book Knowledge Service</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:#f0f2f5;color:#1f2328;min-height:100vh}
+header{background:#1e2a3a;color:#e0e6f0;padding:14px 32px;display:flex;align-items:center;gap:16px}
+header h1{margin:0;font-size:1.15em;font-weight:600}
+.container{max-width:820px;margin:28px auto;padding:0 24px}
+.group{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px 22px;margin-bottom:20px}
+.group h2{margin:0 0 4px;font-size:1em}
+.group h2 a{color:#1f2328;text-decoration:none}.group h2 a:hover{color:#4a9edd}
+.sub{font-size:.78em;color:#6b7280;margin-bottom:12px}
+.task{border:1px solid #e9d8fd;border-radius:7px;padding:10px 12px;margin-top:8px;background:#faf5ff}
+.t-type{font-size:.68em;font-weight:700;text-transform:uppercase;color:#7c5cd8;letter-spacing:.05em;margin-bottom:3px}
+.t-text{font-size:.88em;line-height:1.5;white-space:pre-wrap}
+.t-opts{margin-top:5px;font-size:.82em;color:#374151;line-height:1.7}
+.t-ans{margin-top:5px;font-size:.8em;background:#f3eeff;border-left:3px solid #7c5cd8;border-radius:4px;padding:6px 8px;display:none}
+.t-ans.visible{display:block}
+.t-toggle{font-size:.75em;color:#7c5cd8;cursor:pointer;margin-top:4px;display:inline-block}
+.t-meta{font-size:.72em;color:#9ca3af;margin-top:5px}
+.empty{text-align:center;padding:48px;color:#9ca3af;font-size:.95em}
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/ui" style="color:#8fa0b0;text-decoration:none">📚 Library</a>
+      <span style="color:#4a5568;margin:0 8px">›</span>{% if user.is_admin %}Tasks{% else %}My Tasks{% endif %}</h1>
+  {% include "_userbar.html" %}
+</header>
+
+<div class="container">
+  <div id="summary" class="sub" style="margin-bottom:14px"></div>
+  <div id="groups"><div class="empty">Loading…</div></div>
+</div>
+
+<script>
+const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
+
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function toggleAns(el) {
+  const a = el.nextElementSibling;
+  a.classList.toggle('visible');
+  el.textContent = a.classList.contains('visible') ? '▼ Hide answer' : '▶ Show answer';
+}
+
+async function load() {
+  const res = await fetch('/tasks');
+  if (res.status === 401) { location.href = '/login'; return; }
+  const d = await res.json();
+  const root = document.getElementById('groups');
+  document.getElementById('summary').textContent =
+    d.total ? `${d.total} question${d.total !== 1 ? 's' : ''} ${IS_ADMIN ? 'shared' : 'assigned to you'}` : '';
+  if (!d.tasks.length) {
+    root.innerHTML = `<div class="empty">${IS_ADMIN ? 'Nothing has been shared yet.' : 'No tasks have been assigned to you yet.'}</div>`;
+    return;
+  }
+
+  // Group by chapter, keeping newest-first order.
+  const groups = new Map();
+  d.tasks.forEach(t => {
+    const key = t.book_id + '|' + t.chapter_id;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  });
+
+  root.innerHTML = [...groups.values()].map(items => {
+    const f = items[0];
+    const chTitle = (f.chapter_title || '').replace(/\s+/g, ' ');
+    const heading = `${esc(f.book_title || 'Book')} › ${f.chapter_number != null ? 'Ch.' + f.chapter_number + ' ' : ''}${esc(chTitle)}`;
+    // Show each question in the order it was shared within the chapter.
+    const cards = items.slice().reverse().map((t, i) => `
+      <div class="task">
+        <div class="t-type">${esc(t.type || 'question')}</div>
+        <div class="t-text"><strong>Q${i + 1}.</strong> ${esc(t.question)}</div>
+        ${t.options ? `<div class="t-opts">${t.options.map(o => '<div>' + esc(o) + '</div>').join('')}</div>` : ''}
+        ${t.answer ? `<span class="t-toggle" onclick="toggleAns(this)">▶ Show answer</span>
+           <div class="t-ans">${esc(t.answer)}${t.hint ? '<br><em>Hint: ' + esc(t.hint) + '</em>' : ''}</div>` : ''}
+        <div class="t-meta">Shared by ${esc(t.shared_by)} · ${new Date(t.shared_at).toLocaleString()}
+          ${IS_ADMIN ? ' · ' + (t.assigned_to.length ? 'to ' + esc(t.assigned_to.join(', ')) : 'all students') : ''}
+        </div>
+      </div>`).join('');
+    return `<div class="group">
+      <h2><a href="/ui/books/${f.book_id}/chapters/${f.chapter_id}">${heading}</a></h2>
+      <div class="sub">${items.length} question${items.length !== 1 ? 's' : ''} · <a href="/ui/books/${f.book_id}/chapters/${f.chapter_id}" style="color:#4a9edd">Open chapter</a></div>
+      ${cards}
+    </div>`;
+  }).join('');
+}
+load();
+</script>
+</body>
+</html>

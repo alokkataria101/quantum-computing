@@ -13,7 +13,7 @@ from ..database import get_db
 from ..indexer import delete_book_fts
 from ..models import BookRecord, BookList, BookStatus
 from ..storage import save_uploaded_pdf, validate_pdf_bytes, compute_sha256, delete_book_files
-from ..pdf_processor import extract_pdf_meta
+from ..pdf_processor import extract_pdf_meta, run_pdf
 
 router = APIRouter(prefix="/books", tags=["books"])
 
@@ -52,7 +52,7 @@ async def upload_book(file: UploadFile = File(...)):
     # Best-effort metadata extraction
     from ..storage import book_path
     try:
-        meta = extract_pdf_meta(book_path(book_id))
+        meta = await run_pdf(extract_pdf_meta, book_path(book_id))
         title  = meta.title or file.filename or "Unknown"
         author = meta.author or ""
         total_pages = meta.total_pages

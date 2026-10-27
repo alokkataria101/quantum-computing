@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
@@ -112,7 +114,9 @@ async def export_book(
         raise HTTPException(status_code=404, detail="No questions found matching the filters.")
 
     try:
-        content, media_type = export(fmt, questions, chapters, book_title, include_solutions)
+        # PDF/HTML building is pure-Python CPU work; keep it off the event loop.
+        content, media_type = await asyncio.to_thread(
+            export, fmt, questions, chapters, book_title, include_solutions)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

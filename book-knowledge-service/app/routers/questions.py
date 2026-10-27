@@ -92,6 +92,12 @@ async def start_extraction(book_id: str, chapter_id: str):
     job_id = await create_job(JobType.extract, book_id, chapter_id)
 
     async def _do_extract():
+        try:
+            await _run_extract()
+        except Exception as exc:
+            await update_job(job_id, status="failed", error=str(exc), message="Extraction failed.")
+
+    async def _run_extract():
         # Load chapter pages from DB
         async with db.execute(
             "SELECT page_number, text FROM pages WHERE book_id = ? AND page_number BETWEEN ? AND ? ORDER BY page_number",
@@ -101,7 +107,7 @@ async def start_extraction(book_id: str, chapter_id: str):
         pages = [{"page_number": r["page_number"], "text": r["text"]} for r in rows]
 
         await update_job(job_id, progress=0.3, message="Extracting questions…")
-        questions = extract_questions_from_chapter(book_id, chapter, pages)
+        questions = await asyncio.to_thread(extract_questions_from_chapter, book_id, chapter, pages)
 
         # Delete existing questions for this chapter
         await db.execute(
