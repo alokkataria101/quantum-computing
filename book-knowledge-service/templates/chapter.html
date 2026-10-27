@@ -108,6 +108,7 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
   {% if next_chapter %}
   <a class="btn btn-ghost btn-sm" href="/ui/books/{{ book.book_id }}/chapters/{{ next_chapter.chapter_id }}">Next ›</a>
   {% endif %}
+  {% include "_userbar.html" %}
 </header>
 
 <div id="page-wrapper">
@@ -140,8 +141,10 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
   <div class="info-pane">
     <div class="tabs">
       <div class="tab active" onclick="switchTab('questions',this)">Questions</div>
+      {% if user.is_admin %}
       <div class="tab" onclick="switchTab('ask',this)">💬 Ask AI</div>
       <div class="tab" onclick="switchTab('generate',this)">⚡ Generate</div>
+      {% endif %}
     </div>
     <div class="tab-body">
 
@@ -159,12 +162,13 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
         <div class="q-toolbar">
           <span id="q-count"></span>
           <button class="btn btn-green btn-sm" onclick="downloadQuestions()">⬇ Download</button>
-          <button class="btn btn-secondary btn-sm" onclick="extractQuestions()">⚙ Extract</button>
+          {% if user.is_admin %}<button class="btn btn-secondary btn-sm" onclick="extractQuestions()">⚙ Extract</button>{% endif %}
           <span id="extract-status" style="font-size:.76em;color:#6b7280"></span>
         </div>
         <div id="q-list"><div class="no-q">Loading…</div></div>
       </div>
 
+      {% if user.is_admin %}
       <!-- Ask AI panel -->
       <div class="tab-panel" id="tab-ask">
         <div class="ask-wrap">
@@ -229,6 +233,7 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
           </div>
         </div>
       </div>
+      {% endif %}
 
     </div><!-- tab-body -->
   </div><!-- info-pane -->
@@ -303,7 +308,7 @@ function renderQuestions() {
   document.getElementById('q-count').textContent = `${qs.length} question${qs.length !== 1 ? 's' : ''}`;
   const list = document.getElementById('q-list');
   if (qs.length === 0) {
-    list.innerHTML = '<div class="no-q">No questions found.<br><small>Click ⚙ Extract to parse questions from this chapter.</small></div>';
+    list.innerHTML = '<div class="no-q">No questions found.{% if user.is_admin %}<br><small>Click ⚙ Extract to parse questions from this chapter.</small>{% endif %}</div>';
     return;
   }
   list.innerHTML = qs.map((q, i) => {

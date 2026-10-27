@@ -9,13 +9,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from . import auth as auth_module
+from .auth import User, page_admin, page_user
 from .config import settings
 from .database import init_db, close_db, get_db
 from .routers import books, index, questions, jobs_export, ai
+from .routers import auth as auth_router
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -115,6 +118,7 @@ async def lifespan(app: FastAPI):
     settings.books_dir.mkdir(parents=True, exist_ok=True)
     settings.indexes_dir.mkdir(parents=True, exist_ok=True)
     settings.exports_dir.mkdir(parents=True, exist_ok=True)
+    auth_module.ensure_auth_files()
     await init_db()
     await _autoload_intake_books()
     logger.info("book-knowledge-service started.")
@@ -137,6 +141,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 templates.env.auto_reload = True  # re-read templates from disk on every request (no restart needed)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(auth_router.router)
 app.include_router(books.router)
 app.include_router(index.router)
 app.include_router(questions.router)
@@ -151,6 +156,7 @@ async def viewer(
     request: Request,
     book_id: str,
     page: int = Query(1, ge=1),
+    user: User = Depends(page_user),
 ):
     db = await get_db()
 
@@ -219,17 +225,33 @@ async def viewer(
     )
 
 
+# ── UI — Login / logout ───────────────────────────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+async def login_page(request: Request):
+    if auth_module.current_user(request):
+        return RedirectResponse("/ui", status_code=303)
+    return templates.TemplateResponse(request=request, name="login.html", context={})
+
+
 # ── UI — Library home page ────────────────────────────────────────────────────
 
 @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
-async def ui_home(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html", context={})
+async def ui_home(request: Request, user: User = Depends(page_user)):
+    return templates.TemplateResponse(request=request, name="index.html", context={"user": user})
+
+
+# ── UI — Student management (admin only) ─────────────────────────────────────
+
+@app.get("/ui/students", response_class=HTMLResponse, include_in_schema=False)
+async def ui_students(request: Request, user: User = Depends(page_admin)):
+    return templates.TemplateResponse(request=request, name="students.html", context={"user": user})
 
 
 # ── UI — Book detail (chapters list) ─────────────────────────────────────────
 
 @app.get("/ui/books/{book_id}", response_class=HTMLResponse, include_in_schema=False)
-async def ui_book(request: Request, book_id: str):
+async def ui_book(request: Request, book_id: str, user: User = Depends(page_user)):
     db = await get_db()
 
     async with db.execute("SELECT * FROM books WHERE book_id = ?", (book_id,)) as cur:
@@ -258,14 +280,14 @@ async def ui_book(request: Request, book_id: str):
 
     return templates.TemplateResponse(
         request=request, name="book.html",
-        context={"book": book, "chapters": chapters},
+        context={"book": book, "chapters": chapters, "user": user},
     )
 
 
 # ── UI — Chapter page (reader + questions + AI ask) ───────────────────────────
 
 @app.get("/ui/books/{book_id}/chapters/{chapter_id}", response_class=HTMLResponse, include_in_schema=False)
-async def ui_chapter(request: Request, book_id: str, chapter_id: str):
+async def ui_chapter(request: Request, book_id: str, chapter_id: str, user: User = Depends(page_user)):
     db = await get_db()
 
     async with db.execute("SELECT * FROM books WHERE book_id = ?", (book_id,)) as cur:
@@ -311,6 +333,7 @@ async def ui_chapter(request: Request, book_id: str, chapter_id: str):
             "chapter": chapter,
             "prev_chapter": prev_chapter,
             "next_chapter": next_chapter,
+            "user": user,
         },
     )
 
@@ -324,6 +347,7 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs",
         "ui": "/ui",
+        "login": "/login",
         "redoc": "/redoc",
     }
 

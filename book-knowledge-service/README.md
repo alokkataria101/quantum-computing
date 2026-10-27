@@ -4,12 +4,49 @@ A FastAPI microservice for PDF textbook ingestion, full-text search, page viewin
 
 ---
 
+## Authentication
+
+Every page and API endpoint requires a login, except `/login`, `/auth/login`, `/health`, `/` and the API docs (`/docs`, `/redoc`). There are two user types:
+
+| | Admin | Student |
+|---|:---:|:---:|
+| List books, read pages, view chapters, search | ✅ | ✅ |
+| View extracted questions, export | ✅ | ✅ |
+| Upload / delete / index books | ✅ | — |
+| Extract or generate questions (pattern + AI), Ask AI | ✅ | — |
+| Add students | ✅ | — |
+
+**Credentials are plain-text files** (`username:password`, one per line, `#` comments allowed), kept in `storage/auth/` (git-ignored):
+
+```
+storage/auth/admins.txt      # created on first start with:  admin:adminpassword
+storage/auth/students.txt    # appended to when an admin adds a student
+```
+
+> **Change the default admin password** by editing `storage/auth/admins.txt`. The files are re-read on every login, so edits apply without a restart. Passwords are stored unhashed by design — fine for local use, not for a public deployment (use HTTPS and a reverse proxy at minimum).
+
+Sign in at **http://localhost:8000/login** (choose *Admin* or *Student*). Admins get a **Students** link in the header to add students (name + password → appended to `students.txt`) and a **Delete** button on each book. Sessions are kept in memory, last 12 hours and end on server restart.
+
+From the command line:
+
+```bash
+curl -c jar -X POST localhost:8000/auth/login -H 'content-type: application/json' \
+     -d '{"username":"admin","password":"adminpassword","role":"admin"}'
+curl -b jar -X POST localhost:8000/auth/students -H 'content-type: application/json' \
+     -d '{"username":"alice","password":"wonder1"}'
+curl -b jar -X DELETE localhost:8000/books/<book_id>
+```
+
+---
+
 ## Web UI
 
 The service ships with a built-in web interface — no API knowledge needed.
 
 | URL | What you get |
 |-----|-------------|
+| **http://localhost:8000/login** | Sign in as admin or student |
+| **http://localhost:8000/ui/students** | Add students *(admin only)* |
 | **http://localhost:8000/ui** | Library home — all books, upload, index |
 | **http://localhost:8000/ui/books/{book_id}** | Book detail — chapters list, search, re-index |
 | **http://localhost:8000/ui/books/{book_id}/chapters/{chapter_id}** | Chapter page — reader, questions, AI ask |
@@ -35,6 +72,7 @@ The service ships with a built-in web interface — no API knowledge needed.
 
 ## Table of Contents
 
+0. [Authentication](#authentication)
 1. [Prerequisites](#prerequisites)
 2. [Get the code](#get-the-code)
 3. [Set up the virtual environment](#set-up-the-virtual-environment)
@@ -854,24 +892,33 @@ cd book-knowledge-service
 
 ## API reference
 
-| Method | Endpoint | Auth needed | Purpose |
-|--------|----------|-------------|---------|
-| POST | `/books` | — | Upload a PDF |
-| GET | `/books` | — | List all books |
-| GET | `/books/{book_id}` | — | Book metadata and status |
-| POST | `/books/{book_id}/index` | — | Start indexing job |
-| GET | `/books/{book_id}/chapters` | — | List chapters |
-| GET | `/books/{book_id}/pages/{n}` | — | Page text |
-| GET | `/books/{book_id}/pages/{n}/render` | — | Page as PNG |
-| GET | `/books/{book_id}/search?q=...` | — | Full-text search |
-| POST | `/books/{book_id}/chapters/{ch_id}/extract` | — | Start pattern extraction |
-| GET | `/books/{book_id}/chapters/{ch_id}/questions` | — | List extracted questions |
-| GET | `/jobs/{job_id}` | — | Job progress |
-| GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | — | Export questions |
-| GET | `/books/{book_id}/questions/generate?topic=...` | — | Pattern-based topic questions |
-| POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | watsonx | AI question generation |
-| POST | `/books/{book_id}/ask` | watsonx | AI Q&A (RAG) |
-| GET | `/viewer/{book_id}?page=n` | — | HTML page viewer |
+**Access:** *User* = any logged-in admin or student · *Admin* = admin only · *Public* = no login. Unauthenticated API calls get `401`, a student calling an admin endpoint gets `403`, and unauthenticated browser pages redirect to `/login`.
+
+| Method | Endpoint | Access | Purpose |
+|--------|----------|--------|---------|
+| POST | `/auth/login` | Public | Log in (`username`, `password`, `role`) — sets session cookie |
+| POST | `/auth/logout` | Public | End the session |
+| GET | `/auth/me` | User | Current user |
+| GET | `/auth/students` | Admin | List student names |
+| POST | `/auth/students` | Admin | Add a student (`username`, `password`) |
+| POST | `/books` | Admin | Upload a PDF |
+| DELETE | `/books/{book_id}` | Admin | Delete a book, its chapters/questions/index and files |
+| GET | `/books` | User | List all books |
+| GET | `/books/{book_id}` | User | Book metadata and status |
+| POST | `/books/{book_id}/index` | Admin | Start indexing job |
+| GET | `/books/{book_id}/chapters` | User | List chapters |
+| GET | `/books/{book_id}/pages/{n}` | User | Page text |
+| GET | `/books/{book_id}/pages/{n}/render` | User | Page as PNG |
+| GET | `/books/{book_id}/search?q=...` | User | Full-text search |
+| POST | `/books/{book_id}/chapters/{ch_id}/extract` | Admin | Start pattern extraction |
+| GET | `/books/{book_id}/chapters/{ch_id}/questions` | User | List extracted questions |
+| GET | `/jobs/{job_id}` | User | Job progress |
+| GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | User | Export questions |
+| GET | `/books/{book_id}/questions/generate?topic=...` | Admin | Pattern-based topic questions |
+| POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | Admin (+ watsonx) | AI question generation |
+| POST | `/books/{book_id}/ask` | Admin (+ watsonx) | AI Q&A (RAG) |
+| GET | `/viewer/{book_id}?page=n` | User | HTML page viewer |
+| GET | `/login` | Public | Login page |
 
 Full interactive docs: **http://localhost:8000/docs**
 
@@ -884,6 +931,7 @@ book-knowledge-service/
 ├── app/
 │   ├── main.py               FastAPI app, viewer route, startup/shutdown
 │   ├── config.py             Settings (env / .env file)
+│   ├── auth.py               Text-file credentials, sessions, role guards
 │   ├── models.py             Pydantic schemas
 │   ├── database.py           SQLite + FTS5 schema
 │   ├── storage.py            PDF storage, SHA-256 dedup
@@ -895,17 +943,23 @@ book-knowledge-service/
 │   ├── jobs.py               Async job tracking
 │   ├── exporter.py           JSON / CSV / HTML / PDF export
 │   └── routers/
-│       ├── books.py          POST/GET /books
+│       ├── auth.py           /auth/login, /logout, /me, /students
+│       ├── books.py          POST/GET/DELETE /books
 │       ├── index.py          /index, /chapters, /pages, /search
 │       ├── questions.py      /questions, /extract, /generate (pattern)
 │       ├── ai.py             /ask, /generate-questions (watsonx)
 │       └── jobs_export.py    /jobs, /export
 ├── templates/
+│   ├── login.html            sign-in page
+│   ├── students.html         add/list students (admin)
+│   ├── _userbar.html         user name + logout (included in headers)
 │   └── viewer.html           Jinja2 page viewer
 ├── tests/
 │   ├── conftest.py
-│   └── test_api.py
+│   ├── test_api.py
+│   └── test_auth.py          login, roles, student mgmt, book delete
 ├── storage/                  git-ignored
+│   ├── auth/                 admins.txt, students.txt (plain-text credentials)
 │   ├── books/                uploaded PDFs
 │   ├── indexes/              render cache
 │   └── exports/              generated exports

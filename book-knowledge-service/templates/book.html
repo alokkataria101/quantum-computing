@@ -71,6 +71,7 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
     {{ book.title[:50] }}{% if book.title|length > 50 %}…{% endif %}
   </h1>
   <a class="btn btn-sm" href="/viewer/{{ book.book_id }}?page=1" style="background:#2c3e50;color:#e0e6f0;border-radius:5px;padding:5px 12px;font-size:.82em;text-decoration:none">📖 Open Reader</a>
+  {% include "_userbar.html" %}
 </header>
 
 <div class="container">
@@ -87,8 +88,10 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
       </div>
       <div class="book-actions">
         <a class="btn btn-primary" href="/viewer/{{ book.book_id }}?page=1">📖 Read Book</a>
+        {% if user.is_admin %}
         <button class="btn btn-secondary" id="btn-reindex" onclick="reindex()">🔄 Re-index</button>
         <button class="btn btn-secondary" onclick="extractAll()">⚙ Extract All Questions</button>
+        {% endif %}
       </div>
       <div id="index-status"></div>
       <div class="progress" id="progress-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
@@ -124,7 +127,7 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty">No chapters found. Index the book first.</div>
+      <div class="empty">No chapters found.{% if user.is_admin %} Index the book first.{% endif %}</div>
     {% endif %}
   </div>
 </div>

@@ -7,9 +7,10 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 
+from ..auth import require_admin, require_user
 from ..config import settings
 from ..database import get_db
 from ..indexer import (
@@ -22,14 +23,15 @@ from ..models import ChapterList, ChapterRecord, PageRecord, JobRecord, JobStatu
 from ..pdf_processor import extract_pages, extract_pdf_meta, render_page_to_png, render_page_figures
 from ..storage import book_path, rendered_page_path
 
-router = APIRouter(tags=["indexing"])
+router = APIRouter(tags=["indexing"], dependencies=[Depends(require_user)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /books/{book_id}/index  – start indexing job
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.post("/books/{book_id}/index", response_model=JobRecord)
+@router.post("/books/{book_id}/index", response_model=JobRecord,
+             dependencies=[Depends(require_admin)])
 async def start_index(book_id: str):
     db = await get_db()
     async with db.execute("SELECT * FROM books WHERE book_id = ?", (book_id,)) as cur:

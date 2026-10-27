@@ -20,8 +20,9 @@ import json
 import logging
 import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from ..auth import require_admin
 from ..ai_client import get_ai_client, RateLimitError
 from ..database import get_db
 from ..models import (
@@ -30,7 +31,7 @@ from ..models import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["AI (watsonx)"])
+router = APIRouter(tags=["AI (watsonx)"], dependencies=[Depends(require_admin)])
 
 _AI_DISABLED_MSG = (
     "IBM watsonx AI is not configured. "

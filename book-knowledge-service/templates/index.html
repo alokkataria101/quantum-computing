@@ -40,17 +40,21 @@ h2{font-size:1.1em;font-weight:600;margin:0 0 16px;color:#1f2328}
 .btn{display:inline-block;padding:5px 14px;border-radius:5px;font-size:.82em;font-weight:500;text-decoration:none;border:none;cursor:pointer}
 .btn-primary{background:#4a9edd;color:#fff}.btn-primary:hover{background:#2980b9}
 .btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}.btn-secondary:hover{background:#e5e7eb}
+.btn-danger{background:#fff;color:#b91c1c;border:1px solid #fca5a5}.btn-danger:hover{background:#fee2e2}
+
 .empty{text-align:center;padding:48px;color:#9ca3af;font-size:.95em}
 </style>
 </head>
 <body>
 <header>
   <h1>📚 Book Knowledge Service</h1>
-  <span>Upload · Index · Read · Ask</span>
+  <span>{% if user.is_admin %}Upload · Index · Read · Ask{% else %}Browse · Read{% endif %}</span>
+  {% include "_userbar.html" %}
 </header>
 
 <div class="container">
 
+  {% if user.is_admin %}
   <!-- Upload -->
   <div class="upload-card" id="drop-zone">
     <label class="upload-label" for="file-input">＋ Upload a PDF book</label>
@@ -59,9 +63,10 @@ h2{font-size:1.1em;font-weight:600;margin:0 0 16px;color:#1f2328}
     <div id="upload-status"></div>
     <div class="progress" id="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
   </div>
+  {% endif %}
 
   <!-- Book list -->
-  <h2>Your Books <span id="book-count" style="font-weight:400;color:#6b7280"></span></h2>
+  <h2>{% if user.is_admin %}Your Books{% else %}Books{% endif %} <span id="book-count" style="font-weight:400;color:#6b7280"></span></h2>
   <div class="books-grid" id="books-grid">
     <div class="empty" id="empty-msg">Loading…</div>
   </div>
@@ -69,14 +74,19 @@ h2{font-size:1.1em;font-weight:600;margin:0 0 16px;color:#1f2328}
 </div>
 
 <script>
+const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
+
 async function loadBooks() {
   const res = await fetch('/books');
+  if (res.status === 401) { location.href = '/login'; return; }
   const data = await res.json();
   const grid = document.getElementById('books-grid');
   const count = document.getElementById('book-count');
   grid.innerHTML = '';
   if (!data.books || data.books.length === 0) {
-    grid.innerHTML = '<div class="empty">No books yet — upload a PDF to get started.</div>';
+    grid.innerHTML = IS_ADMIN
+      ? '<div class="empty">No books yet — upload a PDF to get started.</div>'
+      : '<div class="empty">No books available yet.</div>';
     return;
   }
   count.textContent = `(${data.books.length})`;
@@ -93,11 +103,23 @@ async function loadBooks() {
         </div>
         <div class="book-actions">
           ${canOpen ? `<a class="btn btn-primary" href="/ui/books/${b.book_id}">Open</a>` : ''}
-          ${b.status === 'uploaded' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}', this)">Index</button>` : ''}
-          ${b.status === 'error' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}', this)">Retry Index</button>` : ''}
+          ${IS_ADMIN && b.status === 'uploaded' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}', this)">Index</button>` : ''}
+          ${IS_ADMIN && b.status === 'error' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}', this)">Retry Index</button>` : ''}
+          ${IS_ADMIN ? `<button class="btn btn-danger" onclick="deleteBook('${b.book_id}', this)">Delete</button>` : ''}
         </div>
       </div>`;
   });
+}
+
+async function deleteBook(bookId, btn) {
+  if (!confirm('Delete this book and all its chapters, questions and files? This cannot be undone.')) return;
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  const res = await fetch(`/books/${bookId}`, {method:'DELETE'});
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    alert('Delete failed: ' + (d.detail || res.status));
+  }
+  loadBooks();
 }
 
 async function indexBook(bookId, btn) {
@@ -129,11 +151,13 @@ async function uploadFile(file) {
   } catch(e) { status.textContent = '✗ Error: ' + e.message; }
 }
 
-// Drag-and-drop
+// Drag-and-drop (admin only — the drop zone is not rendered for students)
 const dz = document.getElementById('drop-zone');
-dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor='#4a9edd'; });
-dz.addEventListener('dragleave', () => { dz.style.borderColor=''; });
-dz.addEventListener('drop', e => { e.preventDefault(); dz.style.borderColor=''; uploadFile(e.dataTransfer.files[0]); });
+if (dz) {
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor='#4a9edd'; });
+  dz.addEventListener('dragleave', () => { dz.style.borderColor=''; });
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.style.borderColor=''; uploadFile(e.dataTransfer.files[0]); });
+}
 
 loadBooks();
 setInterval(loadBooks, 8000); // auto-refresh for indexing status

@@ -1,0 +1,11 @@
+<span style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0;font-size:.8em;color:#8fa0b0;white-space:nowrap">
+  <span>{{ user.username }} · {{ user.role }}</span>
+  {% if user.is_admin %}<a href="/ui/students" style="color:#8fa0b0;text-decoration:none">Students</a>{% endif %}
+  <a href="#" onclick="event.preventDefault();logout()" style="color:#8fa0b0;text-decoration:none">Logout</a>
+</span>
+<script>
+async function logout() {
+  await fetch('/auth/logout', {method:'POST'});
+  location.href = '/login';
+}
+</script>

@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
+from ..auth import require_user
 from ..database import get_db
 from ..exporter import export
 from ..jobs import get_job
 from ..models import ExportFormat, ExportRequest, JobRecord, JobStatus, JobType, QuestionType
 
-router = APIRouter(tags=["jobs", "export"])
+router = APIRouter(tags=["jobs", "export"], dependencies=[Depends(require_user)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

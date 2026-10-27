@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Login — Book Knowledge Service</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:#f0f2f5;color:#1f2328;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:32px;width:100%;max-width:360px}
+h1{margin:0 0 4px;font-size:1.25em}
+.sub{margin:0 0 22px;font-size:.85em;color:#6b7280}
+label{display:block;font-size:.82em;font-weight:600;margin:14px 0 5px}
+input,select{width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.92em;font-family:inherit}
+input:focus,select:focus{outline:none;border-color:#4a9edd}
+button{width:100%;margin-top:22px;padding:10px;border:none;border-radius:6px;background:#4a9edd;color:#fff;font-size:.92em;font-weight:600;cursor:pointer}
+button:hover{background:#2980b9}
+button:disabled{opacity:.6;cursor:default}
+#error{margin-top:14px;font-size:.84em;color:#991b1b;min-height:18px}
+</style>
+</head>
+<body>
+<form class="card" id="login-form">
+  <h1>Book Knowledge Service</h1>
+  <p class="sub">Sign in to continue</p>
+
+  <label for="role">User type</label>
+  <select id="role" required>
+    <option value="student">Student</option>
+    <option value="admin">Admin</option>
+  </select>
+
+  <label for="username">Username</label>
+  <input id="username" autocomplete="username" required autofocus/>
+
+  <label for="password">Password</label>
+  <input id="password" type="password" autocomplete="current-password" required/>
+
+  <button type="submit" id="submit-btn">Sign in</button>
+  <div id="error"></div>
+</form>
+
+<script>
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  const err = document.getElementById('error');
+  btn.disabled = true; err.textContent = '';
+  try {
+    const res = await fetch('/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        role: document.getElementById('role').value,
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    if (res.ok) { location.href = '/ui'; return; }
+    const d = await res.json().catch(() => ({}));
+    err.textContent = typeof d.detail === 'string' ? d.detail : 'Login failed.';
+  } catch (ex) {
+    err.textContent = 'Network error: ' + ex.message;
+  }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

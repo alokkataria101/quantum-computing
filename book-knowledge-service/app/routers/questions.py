@@ -6,8 +6,9 @@ import asyncio
 import random as _random
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..auth import require_admin, require_user
 from ..database import get_db
 from ..jobs import create_job, update_job
 from ..models import (
@@ -16,7 +17,7 @@ from ..models import (
 )
 from ..question_extractor import extract_questions_from_chapter
 
-router = APIRouter(tags=["questions"])
+router = APIRouter(tags=["questions"], dependencies=[Depends(require_user)])
 
 
 async def _get_chapter(book_id: str, chapter_id: str) -> ChapterRecord:
@@ -74,6 +75,7 @@ async def get_questions(
 @router.post(
     "/books/{book_id}/chapters/{chapter_id}/extract",
     response_model=JobRecord,
+    dependencies=[Depends(require_admin)],
 )
 async def start_extraction(book_id: str, chapter_id: str):
     chapter = await _get_chapter(book_id, chapter_id)
@@ -159,6 +161,7 @@ def _row_to_q(row) -> QuestionRecord:
 @router.get(
     "/books/{book_id}/questions/generate",
     response_model=GenerateResult,
+    dependencies=[Depends(require_admin)],
     summary="Generate N questions on a topic",
     description=(
         "Find chapters whose title matches `topic`, then return `count` questions "

@@ -109,6 +109,29 @@ async def rebuild_fts(book_id: str) -> None:
     logger.info("FTS index rebuilt for book %s", book_id)
 
 
+async def delete_book_fts(book_id: str) -> None:
+    """Remove a book's pages from the FTS5 index (caller commits).
+
+    pages_fts is an external-content table with no triggers, so entries must be
+    deleted explicitly *before* the underlying ``pages`` rows are removed.
+    """
+    db = await get_db()
+    async with db.execute(
+        "SELECT page_id, text, page_number, chapter_id FROM pages WHERE book_id = ?",
+        (book_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    for r in rows:
+        try:
+            await db.execute(
+                "INSERT INTO pages_fts(pages_fts, rowid, text, book_id, page_number, chapter_id) "
+                "VALUES('delete', ?, ?, ?, ?, ?)",
+                (r["page_id"], r["text"], book_id, r["page_number"], r["chapter_id"]),
+            )
+        except Exception:
+            pass  # row may not be in FTS — safe to ignore
+
+
 async def update_book_status(
     book_id: str,
     status: str,

@@ -30,5 +30,10 @@ class Settings(BaseSettings):
     def exports_dir(self) -> Path:
         return self.storage_dir / "exports"
 
+    @property
+    def auth_dir(self) -> Path:
+        """Plain-text credential files: admins.txt and students.txt."""
+        return self.storage_dir / "auth"
+
 
 settings = Settings()
