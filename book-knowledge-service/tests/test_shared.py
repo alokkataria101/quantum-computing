@@ -221,7 +221,6 @@ async def test_deleting_book_removes_its_shared_questions(client):
 async def test_admin_chapter_page_has_all_tabs(client):
     book_id, ch = await _make_chapter(client)
     html = (await client.get(f"/ui/books/{book_id}/chapters/{ch}")).text
-    assert "switchTab('ask'" in html
     assert "switchTab('generate'" in html
     assert "switchTab('shared'" in html
     assert 'onclick="extractQuestions()"' in html
@@ -229,13 +228,11 @@ async def test_admin_chapter_page_has_all_tabs(client):
     assert 'id="tab-generate"' in html
 
 
-async def test_student_chapter_page_has_extract_ask_shared_but_not_generate(client):
+async def test_student_chapter_page_has_extract_shared_but_not_generate(client):
     book_id, ch = await _make_chapter(client)
     await _switch_to_student(client)
     html = (await client.get(f"/ui/books/{book_id}/chapters/{ch}")).text
     assert 'onclick="extractQuestions()"' in html     # Extract visible
-    assert "switchTab('ask'" in html                  # Ask AI visible
-    assert 'id="tab-ask"' in html
     assert "switchTab('shared'" in html               # Shared list visible
     assert "switchTab('generate'" not in html         # Generate hidden
     assert 'id="tab-generate"' not in html

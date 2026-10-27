@@ -14,7 +14,7 @@ from ..auth import require_admin, require_user
 from ..config import settings
 from ..database import get_db
 from ..indexer import (
-    upsert_pages, upsert_chapters, rebuild_fts,
+    upsert_pages, upsert_chapters, rebuild_fts, delete_stale_chapters,
     update_book_status, full_text_search,
 )
 from ..chapter_parser import detect_chapters
@@ -72,6 +72,7 @@ async def start_index(book_id: str):
 
         await update_job(job_id, progress=0.7, message="Saving pages…")
         await upsert_pages(book_id, pages, chapter_map)
+        await delete_stale_chapters(book_id, [ch.chapter_id for ch in chapters])
 
         await update_job(job_id, progress=0.9, message="Building FTS index…")
         await rebuild_fts(book_id)

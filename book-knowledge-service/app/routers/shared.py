@@ -10,6 +10,8 @@ PUT    /shared/{share_id}                              admin – edit
 DELETE /shared/{share_id}                              admin – unshare
 GET    /tasks                                          student – tasks assigned to me;
                                                        admin – every shared task
+DELETE /tasks                                          admin – clear tasks: all, or only
+                                                       one book / chapter (query params)
 
 A shared question with no assignee rows is visible to every student; otherwise
 only to the listed students.
@@ -186,6 +188,24 @@ async def unshare(share_id: str):
     await db.commit()
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="Shared question not found.")
+
+
+@router.delete("/tasks", dependencies=[Depends(require_admin)])
+async def clear_tasks(book_id: str | None = None, chapter_id: str | None = None):
+    """Unshare many questions at once. With no filter every task is cleared;
+    `book_id` and/or `chapter_id` narrow it. Returns how many were removed."""
+    db = await get_db()
+    where, params = [], []
+    if book_id:
+        where.append("book_id = ?")
+        params.append(book_id)
+    if chapter_id:
+        where.append("chapter_id = ?")
+        params.append(chapter_id)
+    sql = "DELETE FROM shared_questions" + (f" WHERE {' AND '.join(where)}" if where else "")
+    cur = await db.execute(sql, params)
+    await db.commit()
+    return {"deleted": cur.rowcount}
 
 
 @router.get("/tasks", response_model=AssignedTaskList)

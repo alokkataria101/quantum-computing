@@ -89,7 +89,7 @@ class ChapterRecord(BaseModel):
     page_start: int
     page_end: int
     confidence: float = 1.0           # 0.0–1.0 detection confidence
-    source: str = "toc"               # "toc" | "inferred"
+    source: str = "toc"               # "toc" | "contents" | "inferred"
 
     model_config = {"from_attributes": True}
 

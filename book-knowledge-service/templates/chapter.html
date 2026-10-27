@@ -60,18 +60,6 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
 .q-pages{font-size:.7em;color:#9ca3af;margin-top:3px}
 .no-q{text-align:center;padding:28px;color:#9ca3af;font-size:.85em}
 
-/* ── Ask AI tab ── */
-.ask-wrap{display:flex;flex-direction:column;gap:10px}
-.ask-wrap p{font-size:.83em;color:#374151}
-.ask-wrap textarea{width:100%;border:1px solid #d1d5db;border-radius:6px;padding:9px 11px;font-size:.85em;line-height:1.5;font-family:inherit;resize:vertical;min-height:72px}
-.ask-wrap textarea:focus{outline:none;border-color:#4a9edd;box-shadow:0 0 0 2px rgba(74,158,221,.15)}
-.ask-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.ask-controls select{border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:.8em}
-#ask-status{font-size:.8em;color:#6b7280}
-.answer-card{background:#f0f7ff;border:1px solid #b8d0e8;border-radius:7px;padding:12px 14px;font-size:.86em;line-height:1.65;display:none}
-.answer-card.visible{display:block}
-.answer-meta{font-size:.72em;color:#6b7280;margin-top:7px;border-top:1px solid #d1e8f5;padding-top:5px}
-
 /* ── Generate tab ── */
 .gen-wrap p{font-size:.83em;color:#374151;margin-bottom:10px}
 .gen-controls{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center}
@@ -156,7 +144,6 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
   <div class="info-pane">
     <div class="tabs">
       <div class="tab active" onclick="switchTab('questions',this)">Questions</div>
-      <div class="tab" onclick="switchTab('ask',this)">💬 Ask AI</div>
       {% if user.is_admin %}
       <div class="tab" onclick="switchTab('generate',this)">⚡ Generate</div>
       {% endif %}
@@ -182,36 +169,6 @@ header .title{font-weight:600;font-size:.88em;color:#e0e6f0;overflow:hidden;text
           <span id="extract-status" style="font-size:.76em;color:#6b7280"></span>
         </div>
         <div id="q-list"><div class="no-q">Loading…</div></div>
-      </div>
-
-      <!-- Ask AI panel -->
-      <div class="tab-panel" id="tab-ask">
-        <div class="ask-wrap">
-          <p>Ask anything about this book — answered from the book text, from any chapter.</p>
-          <textarea id="ask-input" placeholder="e.g. What is Bernoulli's principle? Explain Pascal's law."></textarea>
-          <div class="ask-controls">
-            <label style="font-size:.8em">Search in:
-              <select id="ask-scope">
-                <option value="book" selected>Whole book</option>
-                <option value="chapter">This chapter only</option>
-              </select>
-            </label>
-            <label style="font-size:.8em">Pages:
-              <select id="max-pages">
-                <option value="3">3</option>
-                <option value="5" selected>5</option>
-                <option value="8">8</option>
-                <option value="12">12</option>
-              </select>
-            </label>
-            <button class="btn btn-primary" id="ask-btn" onclick="askAI()">Ask</button>
-            <span id="ask-status"></span>
-          </div>
-          <div class="answer-card" id="answer-card">
-            <div id="answer-text"></div>
-            <div class="answer-meta" id="answer-meta"></div>
-          </div>
-        </div>
       </div>
 
       {% if user.is_admin %}
@@ -408,40 +365,6 @@ function buildQuestionsHTML(title, qs) {
   .qans{background:#f0f7ff;padding:8px 10px;border-left:3px solid #4a9edd;font-size:.88em;border-radius:4px}
   .qpage{font-size:.72em;color:#9ca3af;margin-top:5px}</style></head>
   <body><h1>${escHtml(title)}</h1>${rows}</body></html>`;
-}
-
-/* ────────────────────────── Ask AI ─────────────────────────────────────────── */
-async function askAI() {
-  const q = document.getElementById('ask-input').value.trim();
-  if (!q) return;
-  const btn = document.getElementById('ask-btn');
-  const status = document.getElementById('ask-status');
-  const card = document.getElementById('answer-card');
-  btn.disabled = true; status.textContent = 'Thinking…'; card.classList.remove('visible');
-  try {
-    const res = await fetch(`/books/${BOOK_ID}/ask`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({question:q,
-                            chapter_id: document.getElementById('ask-scope').value === 'chapter' ? CHAPTER_ID : null,
-                            max_pages:parseInt(document.getElementById('max-pages').value)})
-    });
-    const d = await res.json();
-    if (!res.ok) { status.textContent = '✗ ' + (d.detail||'Error'); }
-    else {
-      document.getElementById('answer-text').textContent = d.answer;
-      const srcs = d.sources || [];
-      document.getElementById('answer-meta').innerHTML = srcs.length
-        ? 'Sources: ' + srcs.map(s => {
-            const label = `${s.chapter_number!=null ? 'Ch ' + escHtml(String(s.chapter_number)) + ' — ' : ''}${escHtml(s.chapter_title||'')} · p.${s.page_number}`;
-            return s.chapter_id === CHAPTER_ID
-              ? `<a href="#" onclick="event.preventDefault();goToPage(${s.page_number})">${label}</a>`
-              : `<a href="/ui/books/${BOOK_ID}/chapters/${s.chapter_id}">${label}</a>`;
-          }).join(' &nbsp;|&nbsp; ')
-        : `Sources: pages ${d.source_pages&&d.source_pages.length?d.source_pages.join(', '):'—'}`;
-      card.classList.add('visible'); status.textContent = '';
-    }
-  } catch(e) { status.textContent = '✗ ' + e.message; }
-  btn.disabled = false;
 }
 
 /* ────────────────────────── Generate ───────────────────────────────────────── */

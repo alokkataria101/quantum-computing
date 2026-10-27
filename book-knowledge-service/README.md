@@ -67,7 +67,7 @@ The service ships with a built-in web interface — no API knowledge needed.
 |-----|-------------|
 | **http://localhost:8000/login** | Sign in as admin or student |
 | **http://localhost:8000/ui/students** | Add students *(admin only)* |
-| **http://localhost:8000/ui/tasks** | Student: *My Tasks* (questions assigned to me). Admin: everything shared, and with whom |
+| **http://localhost:8000/ui/tasks** | Student: *My Tasks* (questions assigned to me). Admin: everything shared, and with whom, with Remove / Clear this chapter / Clear all tasks buttons |
 | **http://localhost:8000/ui** | Library home — all books, upload, index |
 | **http://localhost:8000/ui/books/{book_id}** | Book detail — chapters list, search, re-index |
 | **http://localhost:8000/ui/books/{book_id}/chapters/{chapter_id}** | Chapter page — reader, questions, AI ask |
@@ -80,13 +80,13 @@ The service ships with a built-in web interface — no API knowledge needed.
 ### Book detail (`/ui/books/{id}`)
 - See all chapters with page ranges — click **Open** for the full chapter UI or **Read** to jump straight to the page viewer
 - Full-text search across the whole book with results linked to pages
+- **💬 Ask AI** — type any question; watsonx answers from the whole book (or any one chapter you pick in the *Search in* list) and lists the chapter and page of every source
 - **Re-index** button with live progress bar; **Extract All Questions** in one click
 
 ### Chapter page (`/ui/books/{id}/chapters/{ch_id}`)
 - **Left half**: page-by-page reader — OCR images with keyboard navigation (← →), toggle extracted text
 - **Right half — tabs**:
   - **Questions** — filtered by type (Exercise / Example / MCQ / Short Answer…), show/hide answers, "Go to page" link
-  - **💬 Ask AI** — type any question, answered by watsonx from the whole book (or just this chapter — your choice); the answer lists the chapters and pages it came from
   - **⚡ Generate** *(admin)* — pick type (MCQ / Short / Numerical / Mixed), difficulty, and count; AI generates questions with answers; edit and share them
   - **📢 Shared** — questions the admin has published for this chapter
 
@@ -273,10 +273,10 @@ Once the server is running, open **http://localhost:8000/ui** in your browser.
 
 1. **Upload** — drag-and-drop a PDF onto the upload area (or click to browse) → indexing starts automatically
 2. **Open** — click the book card once status shows `indexed`
-3. **Chapter** — click **Open** on any chapter row
-4. **Read** — page images load on the left; use ← → keys to navigate
-5. **Questions** — switch to the **Questions** tab to browse extracted exercises and examples; filter by type
-6. **Ask AI** — switch to the **💬 Ask AI** tab, type a question, get an answer grounded in the book text, with the chapter and page of each source
+3. **Ask AI** — on the book page, type a question under **💬 Ask AI**; the answer comes from the whole book (or one chapter, via *Search in*) with the chapter and page of each source
+4. **Chapter** — click **Open** on any chapter row
+5. **Read** — page images load on the left; use ← → keys to navigate
+6. **Questions** — switch to the **Questions** tab to browse extracted exercises and examples; filter by type
 7. **Generate** — switch to **⚡ Generate**, pick type/difficulty/count, click Generate
 
 > AI features (Ask and Generate) require watsonx credentials in `.env.secrets`. Without them all other UI features work normally.
@@ -944,6 +944,7 @@ cd book-knowledge-service
 | PUT | `/shared/{share_id}` | Admin | Edit a shared question |
 | DELETE | `/shared/{share_id}` | Admin | Unshare |
 | GET | `/tasks` | User | Student: questions assigned to me. Admin: everything shared |
+| DELETE | `/tasks` | Admin | Clear tasks (all, or only `book_id` / `chapter_id`); returns `{"deleted": n}` |
 | GET | `/viewer/{book_id}?page=n` | User | HTML page viewer |
 | GET | `/login` | Public | Login page |
 
@@ -963,7 +964,7 @@ book-knowledge-service/
 │   ├── database.py           SQLite + FTS5 schema
 │   ├── storage.py            PDF storage, SHA-256 dedup
 │   ├── pdf_processor.py      PyMuPDF extraction, OCR fallback, PNG render
-│   ├── chapter_parser.py     TOC + regex chapter detection
+│   ├── chapter_parser.py     chapters from PDF bookmarks, else the printed Table of Contents, else regex
 │   ├── indexer.py            Page persistence, FTS5 rebuild
 │   ├── question_extractor.py Pattern-based question extraction
 │   ├── ai_client.py          IBM watsonx.ai wrapper (optional, graceful fallback)

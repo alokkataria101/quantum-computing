@@ -96,9 +96,24 @@ async def test_student_can_ask_whole_book(student_client, fake_ai):
     assert len(r.json()["sources"]) == 2
 
 
-async def test_chapter_page_offers_whole_book_scope(client):
+async def test_ask_ai_is_on_the_book_page_not_the_chapter_page(client):
     book_id = await _book_with_two_chapters(client)
-    html = (await client.get(f"/ui/books/{book_id}/chapters/c1")).text
-    assert 'id="ask-scope"' in html
-    assert "Whole book" in html
-    assert "This chapter only" in html
+    book = (await client.get(f"/ui/books/{book_id}")).text
+    assert 'id="ask-input"' in book and "askAI()" in book
+    assert "Whole book" in book
+    # every chapter can be picked as the search scope
+    assert 'value="c1"' in book and 'value="c2"' in book
+    chapter = (await client.get(f"/ui/books/{book_id}/chapters/c1")).text
+    assert "Ask AI" not in chapter and 'id="ask-input"' not in chapter
+
+
+async def test_student_sees_ask_ai_on_the_book_page(student_client):
+    from tests.conftest import _login
+    from app import auth as auth_module
+    await student_client.post("/auth/logout")
+    await _login(student_client, auth_module.DEFAULT_ADMIN_USERNAME,
+                 auth_module.DEFAULT_ADMIN_PASSWORD, "admin")
+    book_id = await _book_with_two_chapters(student_client)
+    await student_client.post("/auth/logout")
+    await _login(student_client, "stu", "stupass", "student")
+    assert 'id="ask-input"' in (await student_client.get(f"/ui/books/{book_id}")).text

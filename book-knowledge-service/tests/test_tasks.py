@@ -148,6 +148,52 @@ async def test_tasks_requires_login(anon_client):
     assert (await anon_client.get("/tasks")).status_code == 401
 
 
+# ── DELETE /tasks (clear) ─────────────────────────────────────────────────────
+
+async def _two_chapters(client):
+    book_id, ch1 = await _make_chapter(client, "ch1")
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO chapters (chapter_id, book_id, number, title, page_start, page_end) "
+        "VALUES ('ch2', ?, 2, 'Heat', 1, 1)", (book_id,))
+    await db.commit()
+    await client.post(_url(book_id, "ch1"), json={"questions": [{"question": "a"}, {"question": "b"}], "students": ["alice"]})
+    await client.post(_url(book_id, "ch2"), json={"questions": [{"question": "c"}]})
+    return book_id
+
+
+async def test_clear_all_tasks(client, three_students):
+    await _two_chapters(client)
+    r = await client.delete("/tasks")
+    assert r.status_code == 200 and r.json() == {"deleted": 3}
+    assert (await client.get("/tasks")).json()["total"] == 0
+    db = await get_db()
+    async with db.execute("SELECT COUNT(*) AS n FROM shared_question_assignees") as cur:
+        assert (await cur.fetchone())["n"] == 0
+
+
+async def test_clear_tasks_of_one_chapter(client, three_students):
+    book_id = await _two_chapters(client)
+    r = await client.delete("/tasks", params={"book_id": book_id, "chapter_id": "ch1"})
+    assert r.json() == {"deleted": 2}
+    assert [t["question"] for t in (await client.get("/tasks")).json()["tasks"]] == ["c"]
+
+
+async def test_clear_tasks_is_admin_only(client, three_students):
+    await _two_chapters(client)
+    await _as_student(client, "alice")
+    assert (await client.delete("/tasks")).status_code == 403
+    await _as_admin(client)
+    assert (await client.get("/tasks")).json()["total"] == 3
+
+
+async def test_tasks_page_has_clear_buttons_for_admin_only(client, three_students):
+    assert 'id="clear-all"' in (await client.get("/ui/tasks")).text
+    await _as_student(client, "alice")
+    assert 'id="clear-all"' not in (await client.get("/ui/tasks")).text
+
+
+
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
 async def test_tasks_page_for_student_and_anonymous(anon_client):

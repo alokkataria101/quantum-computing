@@ -47,6 +47,21 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
 .search-hit .snippet b{background:#fef9c3}
 .search-hit .ref{color:#6b7280;font-size:.78em;margin-top:2px}
 
+/* Ask AI */
+.ask-box{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px 18px;margin-bottom:20px}
+.ask-box h3{margin:0 0 4px;font-size:1em;font-weight:600}
+.ask-box p{margin:0 0 10px;font-size:.83em;color:#374151}
+.ask-box textarea{width:100%;border:1px solid #d1d5db;border-radius:6px;padding:9px 11px;font-size:.88em;line-height:1.5;font-family:inherit;resize:vertical;min-height:72px}
+.ask-box textarea:focus{outline:none;border-color:#4a9edd;box-shadow:0 0 0 2px rgba(74,158,221,.15)}
+.ask-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:.82em}
+.ask-controls select{border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:.95em;max-width:260px}
+#ask-status{font-size:.82em;color:#6b7280}
+.answer-card{background:#f0f7ff;border:1px solid #b8d0e8;border-radius:7px;padding:12px 14px;font-size:.88em;line-height:1.65;display:none;margin-top:12px}
+.answer-card.visible{display:block}
+#answer-text{white-space:pre-wrap}
+.answer-meta{font-size:.78em;color:#6b7280;margin-top:8px;border-top:1px solid #d1e8f5;padding-top:6px;line-height:1.8}
+.answer-meta a{color:#2563eb;text-decoration:none}.answer-meta a:hover{text-decoration:underline}
+
 /* Chapter list */
 .chapters-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .chapters-header h3{margin:0;font-size:1em;font-weight:600}
@@ -111,6 +126,37 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
     <button onclick="doSearch()">🔍 Search</button>
   </div>
   <div id="search-results"></div>
+
+  <!-- Ask AI -->
+  <div class="ask-box">
+    <h3>💬 Ask AI</h3>
+    <p>Ask anything about this book — answered from the book text, with the chapter and page it came from.</p>
+    <textarea id="ask-input" placeholder="e.g. What is Bernoulli's principle? Explain Pascal's law."></textarea>
+    <div class="ask-controls">
+      <label>Search in:
+        <select id="ask-scope">
+          <option value="" selected>Whole book</option>
+          {% for ch in chapters %}
+          <option value="{{ ch.chapter_id }}">Ch {{ ch.number }} — {{ ch.title|replace('\r', ' ')|replace('\n', ' ')|truncate(50) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Pages:
+        <select id="max-pages">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="8">8</option>
+          <option value="12">12</option>
+        </select>
+      </label>
+      <button class="btn btn-primary btn-sm" id="ask-btn" onclick="askAI()">Ask</button>
+      <span id="ask-status"></span>
+    </div>
+    <div class="answer-card" id="answer-card">
+      <div id="answer-text"></div>
+      <div class="answer-meta" id="answer-meta"></div>
+    </div>
+  </div>
 
   <!-- Chapters -->
   <div class="chapters-header">
@@ -225,6 +271,42 @@ function downloadAll() {
   const fmt = document.getElementById('dl-fmt').value;
   // Server sends Content-Disposition: attachment, so this just starts the download.
   location.href = `/books/${BOOK_ID}/export?fmt=${fmt}`;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function askAI() {
+  const q = document.getElementById('ask-input').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('ask-btn');
+  const status = document.getElementById('ask-status');
+  const card = document.getElementById('answer-card');
+  btn.disabled = true; status.textContent = 'Thinking…'; card.classList.remove('visible');
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/ask`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question:q,
+                            chapter_id: document.getElementById('ask-scope').value || null,
+                            max_pages: parseInt(document.getElementById('max-pages').value)})
+    });
+    const d = await res.json();
+    if (!res.ok) { status.textContent = '✗ ' + (d.detail || 'Error'); }
+    else {
+      document.getElementById('answer-text').textContent = d.answer;
+      const srcs = d.sources || [];
+      document.getElementById('answer-meta').innerHTML = srcs.length
+        ? 'Sources: ' + srcs.map(s => {
+            const ch = (s.chapter_number != null ? 'Ch ' + esc(s.chapter_number) + ' — ' : '') + esc((s.chapter_title || '').slice(0, 60));
+            return `<a href="/viewer/${BOOK_ID}?page=${s.page_number}">${ch} · p.${s.page_number}</a>`
+                 + (s.chapter_id ? ` (<a href="/ui/books/${BOOK_ID}/chapters/${esc(s.chapter_id)}">chapter</a>)` : '');
+          }).join('<br>')
+        : `Sources: pages ${d.source_pages && d.source_pages.length ? d.source_pages.join(', ') : '—'}`;
+      card.classList.add('visible'); status.textContent = '';
+    }
+  } catch (e) { status.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
 }
 
 async function doSearch() {

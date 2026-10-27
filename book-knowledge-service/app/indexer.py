@@ -65,6 +65,19 @@ async def upsert_chapters(chapters: list[ChapterRecord]) -> None:
     await db.commit()
 
 
+async def delete_stale_chapters(book_id: str, keep_ids: list[str]) -> int:
+    """Drop chapters of a book that a re-index no longer produced (call after the
+    pages have been re-pointed at the new chapters). Returns how many were removed."""
+    db = await get_db()
+    marks = ",".join("?" * len(keep_ids))
+    cur = await db.execute(
+        f"DELETE FROM chapters WHERE book_id = ? AND chapter_id NOT IN ({marks})",
+        [book_id, *keep_ids],
+    )
+    await db.commit()
+    return cur.rowcount
+
+
 async def rebuild_fts(book_id: str) -> None:
     """
     Repopulate the FTS5 virtual table for all pages of a book.

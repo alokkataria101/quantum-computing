@@ -22,6 +22,10 @@ header h1{margin:0;font-size:1.15em;font-weight:600}
 .t-toggle{font-size:.75em;color:#7c5cd8;cursor:pointer;margin-top:4px;display:inline-block}
 .t-meta{font-size:.72em;color:#9ca3af;margin-top:5px}
 .empty{text-align:center;padding:48px;color:#9ca3af;font-size:.95em}
+.btn-del{background:#fff;color:#b91c1c;border:1px solid #fca5a5;border-radius:5px;padding:3px 9px;font-size:.75em;cursor:pointer}
+.btn-del:hover{background:#fef2f2}
+.bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.row-actions{display:flex;justify-content:space-between;align-items:center}
 </style>
 </head>
 <body>
@@ -32,7 +36,10 @@ header h1{margin:0;font-size:1.15em;font-weight:600}
 </header>
 
 <div class="container">
-  <div id="summary" class="sub" style="margin-bottom:14px"></div>
+  <div class="bar">
+    <div id="summary" class="sub" style="margin:0"></div>
+    {% if user.is_admin %}<button class="btn-del" id="clear-all" onclick="clearTasks()" style="display:none">Clear all tasks</button>{% endif %}
+  </div>
   <div id="groups"><div class="empty">Loading…</div></div>
 </div>
 
@@ -49,6 +56,24 @@ function toggleAns(el) {
   el.textContent = a.classList.contains('visible') ? '▼ Hide answer' : '▶ Show answer';
 }
 
+async function removeTask(shareId) {
+  if (!confirm('Remove this task? Students will no longer see it.')) return;
+  const res = await fetch('/shared/' + encodeURIComponent(shareId), {method: 'DELETE'});
+  if (!res.ok && res.status !== 404) { alert('Could not remove the task.'); return; }
+  load();
+}
+
+async function clearTasks(bookId, chapterId) {
+  const scope = chapterId ? 'all tasks in this chapter' : 'ALL tasks';
+  if (!confirm(`Clear ${scope}? Students will no longer see them. This cannot be undone.`)) return;
+  const qs = new URLSearchParams();
+  if (bookId) qs.set('book_id', bookId);
+  if (chapterId) qs.set('chapter_id', chapterId);
+  const res = await fetch('/tasks' + (qs.toString() ? '?' + qs : ''), {method: 'DELETE'});
+  if (!res.ok) { alert('Could not clear tasks.'); return; }
+  load();
+}
+
 async function load() {
   const res = await fetch('/tasks');
   if (res.status === 401) { location.href = '/login'; return; }
@@ -56,6 +81,8 @@ async function load() {
   const root = document.getElementById('groups');
   document.getElementById('summary').textContent =
     d.total ? `${d.total} question${d.total !== 1 ? 's' : ''} ${IS_ADMIN ? 'shared' : 'assigned to you'}` : '';
+  const clearAll = document.getElementById('clear-all');
+  if (clearAll) clearAll.style.display = d.total ? '' : 'none';
   if (!d.tasks.length) {
     root.innerHTML = `<div class="empty">${IS_ADMIN ? 'Nothing has been shared yet.' : 'No tasks have been assigned to you yet.'}</div>`;
     return;
@@ -81,13 +108,17 @@ async function load() {
         ${t.options ? `<div class="t-opts">${t.options.map(o => '<div>' + esc(o) + '</div>').join('')}</div>` : ''}
         ${t.answer ? `<span class="t-toggle" onclick="toggleAns(this)">▶ Show answer</span>
            <div class="t-ans">${esc(t.answer)}${t.hint ? '<br><em>Hint: ' + esc(t.hint) + '</em>' : ''}</div>` : ''}
-        <div class="t-meta">Shared by ${esc(t.shared_by)} · ${new Date(t.shared_at).toLocaleString()}
-          ${IS_ADMIN ? ' · ' + (t.assigned_to.length ? 'to ' + esc(t.assigned_to.join(', ')) : 'all students') : ''}
+        <div class="row-actions">
+          <div class="t-meta">Shared by ${esc(t.shared_by)} · ${new Date(t.shared_at).toLocaleString()}
+            ${IS_ADMIN ? ' · ' + (t.assigned_to.length ? 'to ' + esc(t.assigned_to.join(', ')) : 'all students') : ''}
+          </div>
+          ${IS_ADMIN ? `<button class="btn-del" onclick="removeTask('${esc(t.share_id)}')">Remove</button>` : ''}
         </div>
       </div>`).join('');
     return `<div class="group">
       <h2><a href="/ui/books/${f.book_id}/chapters/${f.chapter_id}">${heading}</a></h2>
-      <div class="sub">${items.length} question${items.length !== 1 ? 's' : ''} · <a href="/ui/books/${f.book_id}/chapters/${f.chapter_id}" style="color:#4a9edd">Open chapter</a></div>
+      <div class="sub">${items.length} question${items.length !== 1 ? 's' : ''} · <a href="/ui/books/${f.book_id}/chapters/${f.chapter_id}" style="color:#4a9edd">Open chapter</a>
+        ${IS_ADMIN ? ` · <button class="btn-del" onclick="clearTasks('${esc(f.book_id)}','${esc(f.chapter_id)}')">Clear this chapter</button>` : ''}</div>
       ${cards}
     </div>`;
   }).join('');

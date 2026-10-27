@@ -43,7 +43,7 @@ async def _autoload_intake_books() -> None:
     from .storage import save_uploaded_pdf, compute_sha256, book_path
     from .pdf_processor import extract_pdf_meta, extract_pages, run_pdf
     from .chapter_parser import detect_chapters
-    from .indexer import upsert_pages, upsert_chapters, rebuild_fts, update_book_status
+    from .indexer import upsert_pages, upsert_chapters, rebuild_fts, update_book_status, delete_stale_chapters
 
     db = await _get_db()
 
@@ -97,6 +97,7 @@ async def _autoload_intake_books() -> None:
                                for ch in chaps
                                for pn in range(ch.page_start, ch.page_end + 1)}
                     await upsert_pages(bid, pages, ch_map)
+                    await delete_stale_chapters(bid, [ch.chapter_id for ch in chaps])
                     await rebuild_fts(bid)
                     await update_book_status(bid, "indexed",
                                              total_pages=len(pages),
