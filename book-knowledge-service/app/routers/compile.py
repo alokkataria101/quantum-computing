@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,6 +73,17 @@ class CompileResponse(BaseModel):
 
 def _export_path(book_id: str, job_id: str, mode: CompileMode) -> Path:
     return settings.exports_dir / f"{book_id}_{job_id}_{mode.value}.pdf"
+
+
+def _safe_filename(label: str, fallback: str = "download") -> str:
+    """Return an ASCII-safe PDF filename (latin-1 encodable for Content-Disposition)."""
+    # Normalise unicode → closest ASCII, replace remaining non-ASCII with '_'
+    s = unicodedata.normalize("NFKD", label or fallback)
+    s = s.encode("latin-1", "replace").decode("latin-1")
+    # Replace characters that are unsafe in filenames
+    s = re.sub(r'[\\/:*?"<>|]', "_", s).strip(" ._")
+    s = re.sub(r"_+", "_", s)
+    return (s[:60] or fallback) + ".pdf"
 
 
 # ── POST /books/{book_id}/compile-pdf ─────────────────────────────────────────
@@ -219,8 +232,9 @@ async def download_compiled(book_id: str, job_id: str):
     db = await get_db()
     async with db.execute("SELECT title FROM books WHERE book_id = ?", (book_id,)) as cur:
         brow = await cur.fetchone()
-    safe_title = (brow["title"] if brow else book_id).replace(" ", "_")[:40]
-    filename   = f"{safe_title}_{found.stem.split('_')[-1]}.pdf"
+    filename = _safe_filename(
+        f"{(brow['title'] if brow else book_id)} {found.stem.split('_')[-1]}"
+    )
 
     return FileResponse(
         path=str(found),
@@ -309,8 +323,7 @@ async def download_compiled_by_id(compile_id: str):
     if not found:
         raise HTTPException(status_code=404, detail="PDF file not found on disk.")
 
-    safe_label = (row["label"] or row["compile_id"]).replace(" ", "_")[:60]
-    filename   = f"{safe_label}.pdf"
+    filename = _safe_filename(row["label"] or row["compile_id"])
     return FileResponse(
         path=str(found),
         media_type="application/pdf",
@@ -543,8 +556,7 @@ async def download_shared_pdf(share_id: str, user: User = Depends(require_user))
     if not found:
         raise HTTPException(status_code=404, detail="PDF file not found on disk.")
 
-    safe_label = (row["label"] or row["share_id"]).replace(" ", "_")[:60]
-    filename   = f"{safe_label}.pdf"
+    filename = _safe_filename(row["label"] or row["share_id"])
     return FileResponse(
         path=str(found),
         media_type="application/pdf",
