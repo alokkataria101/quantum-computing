@@ -26,6 +26,16 @@ header h1{margin:0;font-size:1.15em;font-weight:600}
 .btn-del:hover{background:#fef2f2}
 .bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .row-actions{display:flex;justify-content:space-between;align-items:center}
+/* Shared PDFs */
+.pdf-section{margin-top:28px}
+.pdf-section h2{font-size:1em;font-weight:600;margin:0 0 12px;color:#1f2328}
+.pdf-card{background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 18px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.pdf-info{flex:1}
+.pdf-label{font-weight:600;font-size:.92em;margin-bottom:2px}
+.pdf-meta{font-size:.76em;color:#6b7280;line-height:1.6}
+.pdf-mode{display:inline-block;font-size:.72em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:1px 8px;border-radius:10px;background:#e0f2fe;color:#0369a1;margin-left:6px}
+.btn-dl{background:#065f46;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:.82em;font-weight:500;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn-dl:hover{background:#044033}
 </style>
 </head>
 <body>
@@ -41,10 +51,49 @@ header h1{margin:0;font-size:1.15em;font-weight:600}
     {% if user.is_admin %}<button class="btn-del" id="clear-all" onclick="clearTasks()" style="display:none">Clear all tasks</button>{% endif %}
   </div>
   <div id="groups"><div class="empty">Loading…</div></div>
+
+  <!-- Shared PDFs section -->
+  <div class="pdf-section" id="pdf-section" style="display:none">
+    <h2>📄 Shared PDFs</h2>
+    <div id="pdf-list"></div>
+  </div>
 </div>
 
 <script>
 const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
+
+async function loadPdfs() {
+  const res = await fetch('/shared-pdfs');
+  if (!res.ok) return;
+  const d = await res.json();
+  const section = document.getElementById('pdf-section');
+  const list    = document.getElementById('pdf-list');
+  if (!d.pdfs || !d.pdfs.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = d.pdfs.map(p => `
+    <div class="pdf-card">
+      <div class="pdf-info">
+        <div class="pdf-label">${esc(p.label || p.book_title || 'PDF')} <span class="pdf-mode">${esc(p.mode)}</span></div>
+        <div class="pdf-meta">
+          ${esc(p.book_title || '')} ·
+          Shared by ${esc(p.shared_by)} · ${new Date(p.shared_at).toLocaleString()}
+          ${IS_ADMIN ? ' · ' + (p.assigned_to && p.assigned_to.length ? 'to ' + esc(p.assigned_to.join(', ')) : 'all students') : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a class="btn-dl" href="/shared-pdfs/${esc(p.share_id)}/download">⬇ Download</a>
+        ${IS_ADMIN ? `<button class="btn-del" onclick="removePdf('${esc(p.share_id)}')">Remove</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function removePdf(shareId) {
+  if (!confirm('Remove this shared PDF? Students will no longer see it.')) return;
+  const res = await fetch('/shared-pdfs/' + encodeURIComponent(shareId), {method: 'DELETE'});
+  if (!res.ok && res.status !== 404) { alert('Could not remove.'); return; }
+  loadPdfs();
+}
+
 
 function esc(s) {
   if (s === null || s === undefined) return '';
@@ -124,6 +173,7 @@ async function load() {
   }).join('');
 }
 load();
+loadPdfs();
 </script>
 </body>
 </html>

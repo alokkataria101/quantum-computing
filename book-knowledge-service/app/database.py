@@ -155,4 +155,24 @@ async def _create_schema(db: aiosqlite.Connection) -> None:
         PRIMARY KEY (share_id, student)
     );
     CREATE INDEX IF NOT EXISTS idx_assignee_student ON shared_question_assignees(student);
+
+    -- ── Shared compiled PDFs (admin shares a compiled PDF with students) ────────
+    CREATE TABLE IF NOT EXISTS shared_pdfs (
+        share_id    TEXT PRIMARY KEY,
+        book_id     TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
+        job_id      TEXT NOT NULL,
+        mode        TEXT NOT NULL DEFAULT 'questions',
+        label       TEXT NOT NULL DEFAULT '',
+        shared_by   TEXT NOT NULL,
+        shared_at   TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_shared_pdfs_book ON shared_pdfs(book_id);
+
+    -- Who a shared PDF is assigned to. No rows = every student.
+    CREATE TABLE IF NOT EXISTS shared_pdf_assignees (
+        share_id  TEXT NOT NULL REFERENCES shared_pdfs(share_id) ON DELETE CASCADE,
+        student   TEXT NOT NULL,
+        PRIMARY KEY (share_id, student)
+    );
+    CREATE INDEX IF NOT EXISTS idx_shared_pdf_assignee ON shared_pdf_assignees(student);
     """)

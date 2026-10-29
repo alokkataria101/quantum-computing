@@ -306,3 +306,29 @@ class AssignedTask(SharedQuestion):
 class AssignedTaskList(BaseModel):
     tasks: list[AssignedTask]
     total: int
+
+
+# ── Shared compiled PDFs ──────────────────────────────────────────────────────
+
+class SharePdfRequest(BaseModel):
+    label: str = Field("", max_length=200, description="Optional display label for students.")
+    students: Optional[list[str]] = Field(
+        None, description="Specific student usernames. Omit or null = all students."
+    )
+
+
+class SharedPdf(BaseModel):
+    share_id: str
+    book_id: str
+    job_id: str
+    mode: str
+    label: str
+    shared_by: str
+    shared_at: datetime
+    assigned_to: list[str] = []   # empty = every student
+    book_title: Optional[str] = None
+
+
+class SharedPdfList(BaseModel):
+    pdfs: list[SharedPdf]
+    total: int

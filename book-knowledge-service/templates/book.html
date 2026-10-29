@@ -93,6 +93,12 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
 .compile-progress-bar{height:5px;background:#7c5cd8;border-radius:4px;transition:width .4s}
 .btn-compile{background:#7c5cd8;color:#fff}.btn-compile:hover{background:#6344b8}
 .btn-download{background:#065f46;color:#fff;display:none}.btn-download:hover{background:#044033}
+.btn-share{background:#0369a1;color:#fff;display:none}.btn-share:hover{background:#024d7a}
+.share-opts{display:none;margin-top:10px;padding:12px 14px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:7px;font-size:.83em}
+.share-opts label{display:block;margin-bottom:6px;font-weight:500}
+.share-opts input{width:100%;border:1px solid #d1d5db;border-radius:5px;padding:6px 9px;font-size:.88em;font-family:inherit}
+.share-opts .hint{color:#6b7280;font-size:.78em;margin-top:3px}
+#share-status{font-size:.82em;color:#6b7280;margin-top:6px;min-height:16px}
 </style>
 </head>
 <body>
@@ -186,10 +192,27 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
     <div class="compile-actions">
       <button class="btn btn-compile" id="btn-compile" onclick="startCompile()">▶ Compile PDF</button>
       <button class="btn btn-download" id="btn-compile-download" onclick="downloadCompiled()">⬇ Download PDF</button>
+      <button class="btn btn-share" id="btn-share-toggle" onclick="toggleShareOpts()">📤 Share with Students</button>
     </div>
     <div id="compile-status"></div>
     <div class="compile-progress" id="compile-progress-wrap">
       <div class="compile-progress-bar" id="compile-progress-bar" style="width:0%"></div>
+    </div>
+
+    <!-- Share options (shown after compile succeeds) -->
+    <div class="share-opts" id="share-opts">
+      <label>Label shown to students (optional)
+        <input type="text" id="share-label" placeholder="e.g. Physics Book 1 — Chapter 3 Notes"/>
+      </label>
+      <label style="margin-top:8px">Share with specific students (optional)
+        <input type="text" id="share-students" placeholder="Leave blank for ALL students, or: alice, bob, charlie"/>
+        <span class="hint">Comma-separated usernames. Leave blank to share with every student.</span>
+      </label>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="sharePdf()">✓ Share now</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleShareOpts()">Cancel</button>
+      </div>
+      <div id="share-status"></div>
     </div>
   </div>
   {% endif %}
@@ -334,6 +357,7 @@ function _pollCompile(bar, wrap, status, btn, dlBtn) {
         status.textContent = '✓ ' + (j.message || 'PDF compiled successfully.');
         btn.disabled = false;
         dlBtn.style.display = 'inline-block';
+        document.getElementById('btn-share-toggle').style.display = 'inline-block';
       } else if (j.status === 'failed' || j.status === 'cancelled') {
         clearInterval(_compilePollTimer);
         status.textContent = '✗ ' + (j.error || j.status);
@@ -345,11 +369,46 @@ function _pollCompile(bar, wrap, status, btn, dlBtn) {
     }
   }, 2000);
 }
-
 function downloadCompiled() {
   if (!_compileJobId) return;
   window.location.href = `/books/${BOOK_ID}/compile-pdf/${_compileJobId}/download`;
 }
+
+function toggleShareOpts() {
+  const panel = document.getElementById('share-opts');
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+  document.getElementById('share-status').textContent = '';
+}
+
+async function sharePdf() {
+  if (!_compileJobId) return;
+  const label    = document.getElementById('share-label').value.trim();
+  const rawStudents = document.getElementById('share-students').value.trim();
+  const students = rawStudents ? rawStudents.split(',').map(s => s.trim()).filter(Boolean) : null;
+  const status   = document.getElementById('share-status');
+  status.textContent = 'Sharing…';
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/compile-pdf/${_compileJobId}/share`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({label, students}),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    const d = await res.json();
+    const who = d.assigned_to && d.assigned_to.length
+      ? `shared with ${d.assigned_to.join(', ')}`
+      : 'shared with all students';
+    status.textContent = `✓ PDF ${who}. Students can see it on the Tasks page.`;
+    document.getElementById('share-opts').style.display = 'none';
+  } catch (e) {
+    status.textContent = '✗ ' + e.message;
+  }
+}
+
 
 
 async function reindex() {
