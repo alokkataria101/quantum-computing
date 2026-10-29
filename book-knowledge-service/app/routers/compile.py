@@ -33,7 +33,11 @@ from ..auth import User, require_admin, require_user
 from ..config import settings
 from ..database import get_db
 from ..jobs import create_job, get_job, update_job
-from ..models import CompileMode, JobType, SharePdfRequest, SharedPdf, SharedPdfList
+from ..models import (
+    CompiledPdf, CompiledPdfList,
+    CompileMode, JobType,
+    SharePdfRequest, SharedPdf, SharedPdfList,
+)
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -107,6 +111,18 @@ async def start_compile(book_id: str, req: CompileRequest):
     if not ch_rows:
         raise HTTPException(status_code=404, detail="No matching chapters found.")
 
+    # Build a human-readable description of the selected chapters
+    all_ch_ids = {r["chapter_id"] for r in ch_rows}
+    async with db.execute(
+        "SELECT chapter_id FROM chapters WHERE book_id = ?", (book_id,)
+    ) as cur:
+        all_book_ch = {r["chapter_id"] for r in await cur.fetchall()}
+    if all_ch_ids >= all_book_ch:
+        chapters_desc = "All chapters"
+    else:
+        nums = sorted(r["number"] for r in ch_rows if r["number"] > 0)
+        chapters_desc = "Ch " + ", ".join(str(n) for n in nums)
+
     job_id   = await create_job(JobType.compile_pdf.value, book_id)
     out_path = _export_path(book_id, job_id, req.mode)
 
@@ -137,12 +153,27 @@ async def start_compile(book_id: str, req: CompileRequest):
                 doc = fitz.open(out_path)
                 pages = doc.page_count
                 doc.close()
+
+            # ── persist to compile history ─────────────────────────────────
+            compile_id = str(uuid.uuid4())
+            _db = await get_db()
+            await _db.execute(
+                "INSERT INTO compiled_pdfs "
+                "(compile_id, book_id, job_id, mode, label, chapters_desc, "
+                " page_count, created_by, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (compile_id, book_id, job_id, req.mode.value,
+                 f"{book_title} — {req.mode.value} ({chapters_desc})",
+                 chapters_desc, pages, "admin", _now()),
+            )
+            await _db.commit()
+
             await update_job(
                 job_id,
                 status="done",
                 progress=1.0,
                 message=f"PDF ready ({pages} pages). "
-                        f"job_id={job_id} mode={req.mode.value}",
+                        f"compile_id={compile_id} job_id={job_id} mode={req.mode.value}",
             )
         except Exception as exc:
             logger.exception("compile_pdf job %s failed", job_id)
@@ -200,6 +231,156 @@ async def download_compiled(book_id: str, job_id: str):
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+# ── GET /books/{book_id}/compiled-pdfs ───────────────────────────────────────
+
+@_admin_router.get("/books/{book_id}/compiled-pdfs", response_model=CompiledPdfList)
+async def list_compiled_for_book(book_id: str):
+    """All past compiled PDFs for a specific book (admin only)."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT c.*, b.title AS book_title, "
+        "EXISTS(SELECT 1 FROM shared_pdfs s WHERE s.job_id = c.job_id) AS is_shared "
+        "FROM compiled_pdfs c LEFT JOIN books b ON b.book_id = c.book_id "
+        "WHERE c.book_id = ? ORDER BY c.created_at DESC",
+        (book_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return CompiledPdfList(
+        pdfs=[_row_to_compiled(r) for r in rows],
+        total=len(rows),
+    )
+
+
+# ── GET /compiled-pdfs ───────────────────────────────────────────────────────
+
+@_admin_router.get("/compiled-pdfs", response_model=CompiledPdfList)
+async def list_all_compiled():
+    """All past compiled PDFs across every book (admin only)."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT c.*, b.title AS book_title, "
+        "EXISTS(SELECT 1 FROM shared_pdfs s WHERE s.job_id = c.job_id) AS is_shared "
+        "FROM compiled_pdfs c LEFT JOIN books b ON b.book_id = c.book_id "
+        "ORDER BY c.created_at DESC",
+    ) as cur:
+        rows = await cur.fetchall()
+    return CompiledPdfList(
+        pdfs=[_row_to_compiled(r) for r in rows],
+        total=len(rows),
+    )
+
+
+def _row_to_compiled(r) -> CompiledPdf:
+    return CompiledPdf(
+        compile_id=r["compile_id"],
+        book_id=r["book_id"],
+        job_id=r["job_id"],
+        mode=r["mode"],
+        label=r["label"] or "",
+        chapters_desc=r["chapters_desc"] or "",
+        page_count=r["page_count"] or 0,
+        created_by=r["created_by"],
+        created_at=datetime.fromisoformat(r["created_at"]),
+        book_title=r["book_title"],
+        is_shared=bool(r["is_shared"]),
+    )
+
+
+# ── GET /compiled-pdfs/{compile_id}/download ─────────────────────────────────
+
+@_admin_router.get("/compiled-pdfs/{compile_id}/download")
+async def download_compiled_by_id(compile_id: str):
+    """Download a specific compiled PDF by its compile_id (admin only)."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM compiled_pdfs WHERE compile_id = ?", (compile_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Compiled PDF record not found.")
+
+    found: Path | None = None
+    for mode in CompileMode:
+        p = _export_path(row["book_id"], row["job_id"], mode)
+        if p.exists():
+            found = p
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="PDF file not found on disk.")
+
+    safe_label = (row["label"] or row["compile_id"]).replace(" ", "_")[:60]
+    filename   = f"{safe_label}.pdf"
+    return FileResponse(
+        path=str(found),
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── POST /compiled-pdfs/{compile_id}/share ───────────────────────────────────
+
+@_admin_router.post(
+    "/compiled-pdfs/{compile_id}/share",
+    response_model=SharedPdf,
+    status_code=status.HTTP_201_CREATED,
+)
+async def share_compiled_by_id(
+    compile_id: str,
+    body: SharePdfRequest,
+    admin: User = Depends(require_admin),
+):
+    """Share a compiled PDF (looked up by compile_id) with students."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM compiled_pdfs WHERE compile_id = ?", (compile_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Compiled PDF record not found.")
+
+    found: Path | None = None
+    for mode in CompileMode:
+        p = _export_path(row["book_id"], row["job_id"], mode)
+        if p.exists():
+            found = p
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="PDF file not found on disk.")
+
+    targets: list[str] = []
+    if body.students:
+        known = set(auth_module.list_students())
+        targets = sorted(set(body.students))
+        unknown = [s for s in targets if s not in known]
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"Unknown student(s): {', '.join(unknown)}")
+
+    async with db.execute("SELECT title FROM books WHERE book_id = ?", (row["book_id"],)) as cur:
+        brow = await cur.fetchone()
+    book_title = brow["title"] if brow else ""
+    mode_val   = found.stem.split("_")[-1]
+    label      = body.label or row["label"] or f"{book_title} — {mode_val}"
+    share_id   = str(uuid.uuid4())
+
+    await db.execute(
+        "INSERT INTO shared_pdfs (share_id, book_id, job_id, mode, label, shared_by, shared_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (share_id, row["book_id"], row["job_id"], mode_val, label, admin.username, _now()),
+    )
+    for student in targets:
+        await db.execute(
+            "INSERT INTO shared_pdf_assignees (share_id, student) VALUES (?,?)",
+            (share_id, student),
+        )
+    await db.commit()
+
+    async with db.execute("SELECT * FROM shared_pdfs WHERE share_id = ?", (share_id,)) as cur:
+        srow = await cur.fetchone()
+    assigned = await _pdf_assignees(db, [share_id])
+    return _row_to_shared_pdf(srow, assigned, book_title)
+
 
 async def _pdf_assignees(db, share_ids: list[str]) -> dict[str, list[str]]:
     if not share_ids:

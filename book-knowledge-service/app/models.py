@@ -310,6 +310,25 @@ class AssignedTaskList(BaseModel):
 
 # ── Shared compiled PDFs ──────────────────────────────────────────────────────
 
+class CompiledPdf(BaseModel):
+    compile_id: str
+    book_id: str
+    job_id: str
+    mode: str
+    label: str
+    chapters_desc: str
+    page_count: int
+    created_by: str
+    created_at: datetime
+    book_title: Optional[str] = None
+    is_shared: bool = False          # True if at least one shared_pdfs row points here
+
+
+class CompiledPdfList(BaseModel):
+    pdfs: list[CompiledPdf]
+    total: int
+
+
 class SharePdfRequest(BaseModel):
     label: str = Field("", max_length=200, description="Optional display label for students.")
     students: Optional[list[str]] = Field(

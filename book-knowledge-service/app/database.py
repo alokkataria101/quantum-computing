@@ -156,6 +156,21 @@ async def _create_schema(db: aiosqlite.Connection) -> None:
     );
     CREATE INDEX IF NOT EXISTS idx_assignee_student ON shared_question_assignees(student);
 
+    -- ── Compiled PDFs history (every successful compile is recorded here) ───────
+    -- Survives page refresh; admin can browse, download, or share any past compile.
+    CREATE TABLE IF NOT EXISTS compiled_pdfs (
+        compile_id      TEXT PRIMARY KEY,
+        book_id         TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
+        job_id          TEXT NOT NULL,
+        mode            TEXT NOT NULL DEFAULT 'questions',
+        label           TEXT NOT NULL DEFAULT '',
+        chapters_desc   TEXT NOT NULL DEFAULT '',   -- human-readable "Ch 1, 2, 3" or "All chapters"
+        page_count      INTEGER NOT NULL DEFAULT 0,
+        created_by      TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_compiled_pdfs_book ON compiled_pdfs(book_id);
+
     -- ── Shared compiled PDFs (admin shares a compiled PDF with students) ────────
     CREATE TABLE IF NOT EXISTS shared_pdfs (
         share_id    TEXT PRIMARY KEY,

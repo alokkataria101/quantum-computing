@@ -258,6 +258,13 @@ async def ui_students(request: Request, user: User = Depends(page_admin)):
     return templates.TemplateResponse(request=request, name="students.html", context={"user": user})
 
 
+# ── UI — Compiled PDFs history (admin only) ───────────────────────────────────
+
+@app.get("/ui/compiled-pdfs", response_class=HTMLResponse, include_in_schema=False)
+async def ui_compiled_pdfs(request: Request, user: User = Depends(page_admin)):
+    return templates.TemplateResponse(request=request, name="compiled_pdfs.html", context={"user": user})
+
+
 # ── UI — Book detail (chapters list) ─────────────────────────────────────────
 
 @app.get("/ui/books/{book_id}", response_class=HTMLResponse, include_in_schema=False)

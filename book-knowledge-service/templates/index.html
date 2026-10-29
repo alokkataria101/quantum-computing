@@ -65,6 +65,16 @@ h2{font-size:1.1em;font-weight:600;margin:0 0 16px;color:#1f2328}
   </div>
   {% endif %}
 
+  {% if user.is_admin %}
+  <div style="margin-bottom:14px;font-size:.85em">
+    <a href="/ui/compiled-pdfs" style="color:#7c5cd8;font-weight:500">📋 Compiled PDFs history</a>
+    <span style="color:#d1d5db;margin:0 8px">|</span>
+    <a href="/ui/students" style="color:#4a9edd;font-weight:500">👥 Manage Students</a>
+    <span style="color:#d1d5db;margin:0 8px">|</span>
+    <a href="/ui/tasks" style="color:#4a9edd;font-weight:500">📋 Tasks</a>
+  </div>
+  {% endif %}
+
   <!-- Book list -->
   <h2>{% if user.is_admin %}Your Books{% else %}Books{% endif %} <span id="book-count" style="font-weight:400;color:#6b7280"></span></h2>
   <div class="books-grid" id="books-grid">
