@@ -1088,8 +1088,11 @@ book-knowledge-service/
 │       ├── shared.py         admin-shared questions: list / share / edit / unshare
 │       ├── compile.py        /compile-pdf, /compiled-pdfs, /shared-pdfs — compile history + sharing
 │       └── jobs_export.py    /jobs, /export
+├── static/
+│   └── logo.svg              school crest — served at /static/logo.svg
 ├── templates/
-│   ├── login.html            sign-in page
+│   ├── login.html            sign-in page (school branding)
+│   ├── index.html            library home — admin portal / student portal
 │   ├── students.html         add/list students (admin)
 │   ├── compiled_pdfs.html    compiled PDFs history page (admin)
 │   ├── _userbar.html         user name + logout (included in headers)
@@ -1120,6 +1123,96 @@ quantum-computing/
 ├── .env.secrets.example      committed — safe template
 └── .env.secrets              git-ignored — your real API keys
 ```
+
+---
+
+## Customising for your school
+
+### 1 — School name
+
+The school name **"Sri Ganesh School"** appears in four places. Replace it everywhere with a single search-and-replace:
+
+```bash
+# From inside book-knowledge-service/
+grep -rn "Sri Ganesh School" templates/ static/
+```
+
+Files to update:
+
+| File | What to change |
+|---|---|
+| [`templates/login.html`](templates/login.html) | `<h1>Sri Ganesh School</h1>` and footer text |
+| [`templates/index.html`](templates/index.html) | `<h1>Sri Ganesh School</h1>`, tagline, footer, hero text, fallback book author |
+| [`templates/compiled_pdfs.html`](templates/compiled_pdfs.html) | `<strong>Sri Ganesh School</strong>` in header |
+| [`app/compiler.py`](app/compiler.py) | `"Sri Ganesh School"` string on the notes PDF cover |
+| [`app/question_pdf.py`](app/question_pdf.py) | `"Sri Ganesh School"` string on the questions PDF cover |
+
+Quick one-liner (macOS/Linux):
+
+```bash
+find templates/ app/ -type f \( -name "*.html" -o -name "*.py" \) \
+  -exec sed -i '' 's/Sri Ganesh School/Your School Name/g' {} +
+```
+
+---
+
+### 2 — School logo
+
+The logo is an SVG file at **`static/logo.svg`**. To replace it:
+
+1. Drop your own logo file into `book-knowledge-service/static/` — any filename works.
+2. Update the `src` attribute in the three HTML templates:
+
+```bash
+# Find all logo references
+grep -rn "logo.svg" templates/
+```
+
+Replace `/static/logo.svg` with `/static/your-logo.png` (or `.svg`) in each.
+
+3. For **PDF cover pages**, the logo is loaded from the same path in Python:
+
+```python
+# app/question_pdf.py  — line near _LOGO_PATH
+_LOGO_PATH = Path(__file__).resolve().parent.parent / "static" / "logo.svg"
+```
+
+Change `"logo.svg"` to match your filename.
+
+**Supported formats:** SVG (recommended — scales perfectly), PNG, JPG — PyMuPDF handles all three.
+
+**Logo size on pages:**
+- Web header: 38–42 px display size (CSS)
+- Login banner: 64 px display size (CSS)
+- Questions PDF cover: 52 pt (top-right corner)
+- Notes PDF cover: 88 pt (centred above title)
+
+---
+
+### 3 — Tagline / motto
+
+The tagline *"Knowledge · Discipline · Excellence"* is in `templates/login.html` and `templates/index.html`:
+
+```html
+<div class="tagline">Knowledge · Discipline · Excellence</div>
+<span>Digital Learning Platform</span>
+```
+
+Change both strings to your school's motto.
+
+---
+
+### 4 — Colour scheme
+
+The primary navy colour `#1a3a5c` and accent gold `#c9a84c` are used throughout. To retheme:
+
+| CSS variable usage | Files |
+|---|---|
+| `#1a3a5c` — primary navy | `login.html`, `index.html`, `compiled_pdfs.html`, `logo.svg` |
+| `#1a6fc4` — hover/accent blue | `login.html`, `index.html` |
+| `#c9a84c` — gold (logo only) | `static/logo.svg` |
+
+Do a global replace in `templates/` and `static/` for the hex values you want to change.
 
 ---
 
