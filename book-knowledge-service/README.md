@@ -82,6 +82,7 @@ The service ships with a built-in web interface — no API knowledge needed.
 - Full-text search across the whole book with results linked to pages
 - **💬 Ask AI** — type any question; watsonx answers from the whole book (or any one chapter you pick in the *Search in* list) and lists the chapter and page of every source
 - **Re-index** button with live progress bar; **Extract All Questions** in one click
+- **📄 Compile PDF** *(admin only)* — build a downloadable PDF of notes and/or questions from selected chapters without any AI (see [Compile PDF](#compile-pdf-admin-only))
 
 ### Chapter page (`/ui/books/{id}/chapters/{ch_id}`)
 - **Left half**: page-by-page reader — OCR images with keyboard navigation (← →), toggle extracted text
@@ -770,6 +771,54 @@ curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf"  -o all_questions.pd
 
 ---
 
+## Compile PDF (admin only)
+
+Compile a ready-to-download PDF directly from the original book pages — **no AI required**.
+Every question, figure, and equation is cropped from the actual printed page so nothing is lost in translation.
+
+### Modes
+
+| Mode | What it produces |
+|------|-----------------|
+| `questions` | Two-column question-card PDF grouped by chapter and category (Examples, Exercises, Short-Answer, Objective I/II, Worked Examples) |
+| `notes` | Full chapter notes — every page body rendered as an image strip, grouped by chapter with headings |
+| `both` | A single combined PDF: Part 1 Notes + Part 2 Questions |
+
+### Via the UI (recommended)
+
+1. Open a book's detail page (`/ui/books/{id}`)
+2. Click **📄 Compile PDF (Notes / Questions)** in the book hero
+3. Select chapters (all pre-checked), mode, and quality (DPI)
+4. Click **▶ Compile PDF** — a purple progress bar tracks the background job
+5. When done, click **⬇ Download PDF**
+
+### Via the API
+
+```bash
+# Start a compile job — questions only, all chapters
+curl -X POST http://localhost:8000/books/<BOOK_ID>/compile-pdf \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "questions", "dpi": 170, "chapter_ids": []}' | jq .
+# → { "job_id": "...", "message": "..." }
+
+# Specific chapters only
+curl -X POST http://localhost:8000/books/<BOOK_ID>/compile-pdf \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "notes", "dpi": 130, "chapter_ids": ["<CH_ID_1>","<CH_ID_2>"]}' | jq .
+
+# Poll until done
+curl http://localhost:8000/jobs/<JOB_ID> | jq '{status: .status, message: .message}'
+
+# Download the finished PDF
+curl -OJ http://localhost:8000/books/<BOOK_ID>/compile-pdf/<JOB_ID>/download
+```
+
+**`dpi` options:** `130` (draft, fast) · `170` (standard) · `220` (high quality, slow)
+
+> **Note:** Large books (400+ pages) in `both` mode can take 3–5 minutes. The job runs in the background; the UI polls every 2 seconds automatically.
+
+---
+
 ## Generate questions with AI
 
 > **Requires:** watsonx credentials configured (see [Configure watsonx AI](#configure-watsonx-ai-optional)).
@@ -936,6 +985,8 @@ cd book-knowledge-service
 | GET | `/books/{book_id}/chapters/{ch_id}/questions` | User | List extracted questions |
 | GET | `/jobs/{job_id}` | User | Job progress |
 | GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | User | Export questions |
+| POST | `/books/{book_id}/compile-pdf` | Admin | Start a compile-PDF job (notes/questions/both, chapter selection) |
+| GET | `/books/{book_id}/compile-pdf/{job_id}/download` | Admin | Download the compiled PDF once the job is done |
 | GET | `/books/{book_id}/questions/generate?topic=...` | Admin | Pattern-based topic questions |
 | POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | Admin (+ watsonx) | AI question generation |
 | POST | `/books/{book_id}/ask` | User (+ watsonx) | AI Q&A (RAG); omit `chapter_id` to search the whole book; response includes `sources` (chapter + page) |
@@ -967,6 +1018,8 @@ book-knowledge-service/
 │   ├── chapter_parser.py     chapters from PDF bookmarks, else the printed Table of Contents, else regex
 │   ├── indexer.py            Page persistence, FTS5 rebuild
 │   ├── question_extractor.py Pattern-based question extraction
+│   ├── question_pdf.py       Crop questions from PDF pages into image cards
+│   ├── compiler.py           Compile notes+questions PDFs without AI
 │   ├── ai_client.py          IBM watsonx.ai wrapper (optional, graceful fallback)
 │   ├── jobs.py               Async job tracking
 │   ├── exporter.py           JSON / CSV / HTML / PDF export
@@ -977,6 +1030,7 @@ book-knowledge-service/
 │       ├── questions.py      /questions, /extract, /generate (pattern)
 │       ├── ai.py             /ask, /generate-questions (watsonx)
 │       ├── shared.py         admin-shared questions: list / share / edit / unshare
+│       ├── compile.py        /compile-pdf — admin notes+questions PDF builder
 │       └── jobs_export.py    /jobs, /export
 ├── templates/
 │   ├── login.html            sign-in page
@@ -987,7 +1041,8 @@ book-knowledge-service/
 │   ├── conftest.py
 │   ├── test_api.py
 │   ├── test_auth.py          login, roles, student mgmt, book delete
-│   └── test_shared.py        share / edit / unshare, student view, page tabs per role
+│   ├── test_shared.py        share / edit / unshare, student view, page tabs per role
+│   └── test_question_pdf.py  question PDF crop pipeline unit tests
 ├── storage/                  git-ignored
 │   ├── auth/                 admins.txt, students.txt (plain-text credentials)
 │   ├── books/                uploaded PDFs
