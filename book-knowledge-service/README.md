@@ -77,12 +77,21 @@ The service ships with a built-in web interface — no API knowledge needed.
 - All books shown as cards with live status (uploaded / indexing / indexed / error)
 - Click **Open** to enter a book, or **Index** to trigger indexing manually
 
+### Library home (`/ui`) — admin quick links
+Admins see a shortcut bar: **📋 Compiled PDFs history** · **👥 Manage Students** · **📋 Tasks**
+
 ### Book detail (`/ui/books/{id}`)
 - See all chapters with page ranges — click **Open** for the full chapter UI or **Read** to jump straight to the page viewer
 - Full-text search across the whole book with results linked to pages
 - **💬 Ask AI** — type any question; watsonx answers from the whole book (or any one chapter you pick in the *Search in* list) and lists the chapter and page of every source
 - **Re-index** button with live progress bar; **Extract All Questions** in one click
-- **📄 Compile PDF** *(admin only)* — build a downloadable PDF of notes and/or questions from selected chapters without any AI (see [Compile PDF](#compile-pdf-admin-only))
+- **📄 Compile PDF** *(admin only)* — build a downloadable PDF of notes and/or questions from selected chapters without any AI; after compile succeeds, **📤 Share with Students** and **📋 View all past compiled PDFs →** links appear (see [Compile PDF](#compile-pdf-admin-only))
+
+### Compiled PDFs history (`/ui/compiled-pdfs`) — admin only
+- Lists **every PDF ever compiled** across all books — survives page refresh and restarts
+- Filter by book or mode
+- **⬇ Download** any past PDF · **📤 Share** any past PDF with all students or specific ones
+- "shared" badge shown on already-shared entries
 
 ### Chapter page (`/ui/books/{id}/chapters/{ch_id}`)
 - **Left half**: page-by-page reader — OCR images with keyboard navigation (← →), toggle extracted text
@@ -790,7 +799,18 @@ Every question, figure, and equation is cropped from the actual printed page so 
 2. Click **📄 Compile PDF (Notes / Questions)** in the book hero
 3. Select chapters (all pre-checked), mode, and quality (DPI)
 4. Click **▶ Compile PDF** — a purple progress bar tracks the background job
-5. When done, click **⬇ Download PDF**
+5. When done: **⬇ Download PDF** · **📤 Share with Students** · **📋 View all past compiled PDFs →**
+
+Every successful compile is **permanently recorded** — go to `/ui/compiled-pdfs` at any time to download or share past PDFs.
+
+### Share a compiled PDF with students
+
+After a compile finishes (or from the history page):
+1. Click **📤 Share with Students**
+2. Enter an optional label and optionally specific student usernames (blank = all students)
+3. Click **✓ Share now**
+
+Students see the shared PDF on the **Tasks** page (`/ui/tasks`) → **⬇ Download**
 
 ### Via the API
 
@@ -799,18 +819,46 @@ Every question, figure, and equation is cropped from the actual printed page so 
 curl -X POST http://localhost:8000/books/<BOOK_ID>/compile-pdf \
   -H "Content-Type: application/json" \
   -d '{"mode": "questions", "dpi": 170, "chapter_ids": []}' | jq .
-# → { "job_id": "...", "message": "..." }
+# → { "job_id": "...", "message": "...", "compile_id": "..." }
 
 # Specific chapters only
 curl -X POST http://localhost:8000/books/<BOOK_ID>/compile-pdf \
   -H "Content-Type: application/json" \
   -d '{"mode": "notes", "dpi": 130, "chapter_ids": ["<CH_ID_1>","<CH_ID_2>"]}' | jq .
 
-# Poll until done
+# Poll until done — message contains compile_id when successful
 curl http://localhost:8000/jobs/<JOB_ID> | jq '{status: .status, message: .message}'
 
-# Download the finished PDF
+# Download the finished PDF (by job_id — direct after compile)
 curl -OJ http://localhost:8000/books/<BOOK_ID>/compile-pdf/<JOB_ID>/download
+
+# List all compile history for a book
+curl http://localhost:8000/books/<BOOK_ID>/compiled-pdfs | jq '.pdfs[] | {label, mode, page_count, chapters_desc}'
+
+# List ALL compile history across all books
+curl http://localhost:8000/compiled-pdfs | jq '.pdfs[] | {book_title, label, mode, created_at}'
+
+# Download any past compile by compile_id
+curl -OJ http://localhost:8000/compiled-pdfs/<COMPILE_ID>/download
+
+# Share a compiled PDF with all students
+curl -X POST http://localhost:8000/compiled-pdfs/<COMPILE_ID>/share \
+  -H "Content-Type: application/json" \
+  -d '{"label": "Physics Book 1 — Ch 3 Notes"}' | jq .
+
+# Share with specific students only
+curl -X POST http://localhost:8000/compiled-pdfs/<COMPILE_ID>/share \
+  -H "Content-Type: application/json" \
+  -d '{"label": "For Alice and Bob", "students": ["alice", "bob"]}' | jq .
+
+# List shared PDFs visible to the caller
+curl http://localhost:8000/shared-pdfs | jq '.pdfs[] | {label, mode, shared_by}'
+
+# Download a shared PDF (student or admin)
+curl -OJ http://localhost:8000/shared-pdfs/<SHARE_ID>/download
+
+# Unshare a compiled PDF
+curl -X DELETE http://localhost:8000/shared-pdfs/<SHARE_ID>
 ```
 
 **`dpi` options:** `130` (draft, fast) · `170` (standard) · `220` (high quality, slow)
@@ -986,7 +1034,15 @@ cd book-knowledge-service
 | GET | `/jobs/{job_id}` | User | Job progress |
 | GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | User | Export questions |
 | POST | `/books/{book_id}/compile-pdf` | Admin | Start a compile-PDF job (notes/questions/both, chapter selection) |
-| GET | `/books/{book_id}/compile-pdf/{job_id}/download` | Admin | Download the compiled PDF once the job is done |
+| GET | `/books/{book_id}/compile-pdf/{job_id}/download` | Admin | Download compiled PDF by job ID |
+| POST | `/books/{book_id}/compile-pdf/{job_id}/share` | Admin | Share a just-compiled PDF with students |
+| GET | `/books/{book_id}/compiled-pdfs` | Admin | List all past compiles for a book |
+| GET | `/compiled-pdfs` | Admin | List all past compiles across every book |
+| GET | `/compiled-pdfs/{compile_id}/download` | Admin | Download any past compiled PDF |
+| POST | `/compiled-pdfs/{compile_id}/share` | Admin | Share any past compiled PDF with students |
+| DELETE | `/shared-pdfs/{share_id}` | Admin | Unshare a compiled PDF |
+| GET | `/shared-pdfs` | User | List compiled PDFs shared with the caller |
+| GET | `/shared-pdfs/{share_id}/download` | User | Download a shared compiled PDF |
 | GET | `/books/{book_id}/questions/generate?topic=...` | Admin | Pattern-based topic questions |
 | POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | Admin (+ watsonx) | AI question generation |
 | POST | `/books/{book_id}/ask` | User (+ watsonx) | AI Q&A (RAG); omit `chapter_id` to search the whole book; response includes `sources` (chapter + page) |
@@ -1030,11 +1086,12 @@ book-knowledge-service/
 │       ├── questions.py      /questions, /extract, /generate (pattern)
 │       ├── ai.py             /ask, /generate-questions (watsonx)
 │       ├── shared.py         admin-shared questions: list / share / edit / unshare
-│       ├── compile.py        /compile-pdf — admin notes+questions PDF builder
+│       ├── compile.py        /compile-pdf, /compiled-pdfs, /shared-pdfs — compile history + sharing
 │       └── jobs_export.py    /jobs, /export
 ├── templates/
 │   ├── login.html            sign-in page
 │   ├── students.html         add/list students (admin)
+│   ├── compiled_pdfs.html    compiled PDFs history page (admin)
 │   ├── _userbar.html         user name + logout (included in headers)
 │   └── viewer.html           Jinja2 page viewer
 ├── tests/
