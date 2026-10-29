@@ -76,6 +76,23 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
 .ch-badge{font-size:.72em;padding:2px 8px;border-radius:10px}
 .ch-badge-q{background:#e0f2fe;color:#0369a1}
 .empty{text-align:center;padding:40px;color:#9ca3af;font-size:.9em}
+
+/* Compile PDF panel */
+.compile-panel{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px 24px;margin-bottom:24px}
+.compile-panel h3{margin:0 0 4px;font-size:1em;font-weight:600}
+.compile-panel p{margin:0 0 14px;font-size:.83em;color:#374151}
+.compile-opts{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-start}
+.compile-opts label{font-size:.85em;font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer}
+.compile-opts select{border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:.88em}
+.ch-checkboxes{border:1px solid #e5e7eb;border-radius:7px;padding:10px 14px;max-height:180px;overflow-y:auto;margin-bottom:14px;background:#fafafa}
+.ch-checkboxes label{display:flex;align-items:center;gap:8px;font-size:.83em;padding:3px 0;cursor:pointer}
+.ch-checkboxes label:hover{color:#2563eb}
+.compile-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#compile-status{font-size:.83em;color:#6b7280;margin-top:6px;min-height:18px}
+.compile-progress{height:5px;background:#e5e7eb;border-radius:4px;margin-top:6px;display:none;max-width:340px}
+.compile-progress-bar{height:5px;background:#7c5cd8;border-radius:4px;transition:width .4s}
+.btn-compile{background:#7c5cd8;color:#fff}.btn-compile:hover{background:#6344b8}
+.btn-download{background:#065f46;color:#fff;display:none}.btn-download:hover{background:#044033}
 </style>
 </head>
 <body>
@@ -115,10 +132,67 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
         </select>
         <button class="btn btn-secondary" onclick="downloadAll()">⬇ Download All Questions</button>
       </div>
+      {% if user.is_admin %}
+      <div style="margin-top:10px">
+        <button class="btn btn-secondary btn-sm" onclick="toggleCompilePanel()" id="btn-compile-toggle">📄 Compile PDF (Notes / Questions)</button>
+      </div>
+      {% endif %}
       <div id="index-status"></div>
       <div class="progress" id="progress-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
     </div>
   </div>
+
+  <!-- Compile PDF panel (admin only) -->
+  {% if user.is_admin %}
+  <div class="compile-panel" id="compile-panel" style="display:none">
+    <h3>📄 Compile PDF — Notes &amp; Questions</h3>
+    <p>Select chapters and a mode, then click Compile. The PDF is built from the original book pages — no AI, figures included. Large books may take a few minutes.</p>
+
+    <div class="compile-opts">
+      <label>Mode:
+        <select id="compile-mode">
+          <option value="questions">Questions only</option>
+          <option value="notes">Full notes (all pages)</option>
+          <option value="both">Both (combined PDF)</option>
+        </select>
+      </label>
+      <label>Quality:
+        <select id="compile-dpi">
+          <option value="130">Draft (130 dpi — fast)</option>
+          <option value="170" selected>Standard (170 dpi)</option>
+          <option value="220">High (220 dpi — slow)</option>
+        </select>
+      </label>
+    </div>
+
+    <div style="font-size:.83em;font-weight:500;margin-bottom:6px">
+      Chapters:
+      <button class="btn btn-sm btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="selectAllChapters(true)">All</button>
+      <button class="btn btn-sm btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="selectAllChapters(false)">None</button>
+    </div>
+    <div class="ch-checkboxes" id="compile-ch-list">
+      {% for ch in chapters %}
+      {% if ch.number > 0 %}
+      <label>
+        <input type="checkbox" class="ch-check" value="{{ ch.chapter_id }}" checked>
+        <span>Ch {{ ch.number }} — {{ ch.title|replace('\r',' ')|replace('\n',' ')|truncate(60) }}
+          <span style="color:#9ca3af">(pp {{ ch.page_start }}–{{ ch.page_end }})</span>
+        </span>
+      </label>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="compile-actions">
+      <button class="btn btn-compile" id="btn-compile" onclick="startCompile()">▶ Compile PDF</button>
+      <button class="btn btn-download" id="btn-compile-download" onclick="downloadCompiled()">⬇ Download PDF</button>
+    </div>
+    <div id="compile-status"></div>
+    <div class="compile-progress" id="compile-progress-wrap">
+      <div class="compile-progress-bar" id="compile-progress-bar" style="width:0%"></div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Search -->
   <div class="search-bar">
@@ -187,6 +261,96 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
 
 <script>
 const BOOK_ID = "{{ book.book_id }}";
+
+// ── Compile PDF ───────────────────────────────────────────────────────────────
+let _compileJobId = null;
+let _compilePollTimer = null;
+
+function toggleCompilePanel() {
+  const p = document.getElementById('compile-panel');
+  const btn = document.getElementById('btn-compile-toggle');
+  const visible = p.style.display !== 'none';
+  p.style.display = visible ? 'none' : 'block';
+  btn.textContent = visible ? '📄 Compile PDF (Notes / Questions)' : '▲ Hide Compile Panel';
+}
+
+function selectAllChapters(val) {
+  document.querySelectorAll('.ch-check').forEach(cb => cb.checked = val);
+}
+
+async function startCompile() {
+  const btn      = document.getElementById('btn-compile');
+  const dlBtn    = document.getElementById('btn-compile-download');
+  const status   = document.getElementById('compile-status');
+  const bar      = document.getElementById('compile-progress-bar');
+  const wrap     = document.getElementById('compile-progress-wrap');
+  const mode     = document.getElementById('compile-mode').value;
+  const dpi      = parseInt(document.getElementById('compile-dpi').value);
+  const checked  = [...document.querySelectorAll('.ch-check:checked')].map(c => c.value);
+
+  dlBtn.style.display = 'none';
+  _compileJobId = null;
+  btn.disabled = true;
+  wrap.style.display = 'block';
+  bar.style.width = '5%';
+  status.textContent = 'Submitting…';
+
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/compile-pdf`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mode, dpi, chapter_ids: checked}),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    _compileJobId = data.job_id;
+    status.textContent = 'Compiling… (this can take a few minutes for large books)';
+    bar.style.width = '10%';
+    _pollCompile(bar, wrap, status, btn, dlBtn);
+  } catch (e) {
+    status.textContent = '✗ ' + e.message;
+    btn.disabled = false;
+    wrap.style.display = 'none';
+  }
+}
+
+function _pollCompile(bar, wrap, status, btn, dlBtn) {
+  if (_compilePollTimer) clearInterval(_compilePollTimer);
+  _compilePollTimer = setInterval(async () => {
+    if (!_compileJobId) return;
+    try {
+      const r = await fetch(`/jobs/${_compileJobId}`);
+      const j = await r.json();
+      const pct = Math.min(95, Math.max(10, (j.progress || 0) * 100));
+      bar.style.width = pct + '%';
+      if (j.message) status.textContent = j.message;
+
+      if (j.status === 'done') {
+        clearInterval(_compilePollTimer);
+        bar.style.width = '100%';
+        status.textContent = '✓ ' + (j.message || 'PDF compiled successfully.');
+        btn.disabled = false;
+        dlBtn.style.display = 'inline-block';
+      } else if (j.status === 'failed' || j.status === 'cancelled') {
+        clearInterval(_compilePollTimer);
+        status.textContent = '✗ ' + (j.error || j.status);
+        btn.disabled = false;
+        wrap.style.display = 'none';
+      }
+    } catch (e) {
+      /* network hiccup — keep polling */
+    }
+  }, 2000);
+}
+
+function downloadCompiled() {
+  if (!_compileJobId) return;
+  window.location.href = `/books/${BOOK_ID}/compile-pdf/${_compileJobId}/download`;
+}
+
 
 async function reindex() {
   const btn = document.getElementById('btn-reindex');

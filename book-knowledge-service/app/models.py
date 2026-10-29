@@ -29,6 +29,13 @@ class JobStatus(str, Enum):
 class JobType(str, Enum):
     index      = "index"
     extract    = "extract"
+    compile_pdf = "compile_pdf"
+
+
+class CompileMode(str, Enum):
+    questions = "questions"
+    notes     = "notes"
+    both      = "both"
 
 
 class QuestionType(str, Enum):
