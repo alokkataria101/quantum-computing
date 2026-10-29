@@ -2,86 +2,193 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>Book Knowledge Service</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Sri Ganesh School {% if user.is_admin %}— Teacher Portal{% else %}— Student Portal{% endif %}</title>
 <style>
-*{box-sizing:border-box}
-body{margin:0;font-family:system-ui,sans-serif;background:#f0f2f5;color:#1f2328;min-height:100vh}
-header{background:#1e2a3a;color:#e0e6f0;padding:16px 32px;display:flex;align-items:center;gap:16px}
-header h1{margin:0;font-size:1.3em;font-weight:600}
-header span{font-size:.85em;color:#8fa0b0}
-.container{max-width:960px;margin:32px auto;padding:0 24px}
-h2{font-size:1.1em;font-weight:600;margin:0 0 16px;color:#1f2328}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,'Segoe UI',sans-serif;background:#f0f4f8;color:#1f2328;min-height:100vh;display:flex;flex-direction:column}
 
-/* Upload card */
-.upload-card{background:#fff;border:2px dashed #c0c8d0;border-radius:10px;padding:28px 32px;margin-bottom:32px;text-align:center}
-.upload-card:hover{border-color:#4a9edd}
+/* ── Header ── */
+.site-header{background:#1a3a5c;color:#fff;padding:0 32px;display:flex;align-items:center;gap:0;min-height:58px}
+.site-header .brand{display:flex;align-items:center;gap:12px;flex:1}
+.site-header .brand-icon{font-size:1.6em;line-height:1}
+.site-header .brand-text h1{font-size:1.05em;font-weight:700;letter-spacing:.01em;line-height:1.2}
+.site-header .brand-text span{font-size:.72em;color:#93b4d0;letter-spacing:.05em;text-transform:uppercase}
+.site-header nav{display:flex;gap:4px;align-items:center}
+.site-header nav a{color:#93b4d0;text-decoration:none;font-size:.82em;padding:6px 12px;border-radius:5px;transition:background .15s,color .15s}
+.site-header nav a:hover,.site-header nav a.active{background:rgba(255,255,255,.1);color:#fff}
+
+/* ── Hero ── */
+.hero{background:linear-gradient(135deg,#1a3a5c 0%,#1a6fc4 100%);color:#fff;padding:40px 32px 36px;text-align:center}
+.hero h2{font-size:1.6em;font-weight:700;margin-bottom:6px}
+.hero p{font-size:.92em;color:#b8d4f0;max-width:520px;margin:0 auto}
+
+/* ── Quick actions strip (admin) ── */
+.quick-strip{background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 32px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.quick-strip a{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:6px;font-size:.82em;font-weight:500;text-decoration:none;border:1px solid #d1d5db;color:#374151;background:#f9fafb;transition:background .12s,border-color .12s}
+.quick-strip a:hover{background:#e8f0fe;border-color:#93b4d0;color:#1a3a5c}
+.quick-strip .sep{color:#d1d5db;margin:0 2px}
+
+/* ── Main container ── */
+.container{max-width:980px;margin:0 auto;padding:28px 24px;flex:1}
+
+/* ── Section title ── */
+.sec-title{font-size:.92em;font-weight:700;color:#1a3a5c;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.sec-title::after{content:'';flex:1;height:1px;background:#e5e7eb}
+
+/* ── Upload card (admin) ── */
+.upload-card{background:#fff;border:2px dashed #b8cfe8;border-radius:10px;padding:24px 28px;margin-bottom:28px;text-align:center;transition:border-color .15s}
+.upload-card:hover{border-color:#1a6fc4}
 .upload-card input[type=file]{display:none}
-.upload-label{display:inline-block;padding:10px 24px;background:#4a9edd;color:#fff;border-radius:6px;cursor:pointer;font-size:.9em;font-weight:500}
-.upload-label:hover{background:#2980b9}
-.upload-card p{margin:8px 0 0;font-size:.85em;color:#6b7280}
-#upload-status{margin-top:12px;font-size:.88em;min-height:20px}
-.progress{height:6px;background:#e5e7eb;border-radius:4px;margin-top:8px;display:none}
-.progress-bar{height:6px;background:#4a9edd;border-radius:4px;width:0;transition:width .3s}
+.upload-label{display:inline-block;padding:9px 22px;background:#1a3a5c;color:#fff;border-radius:6px;cursor:pointer;font-size:.88em;font-weight:500;transition:background .15s}
+.upload-label:hover{background:#1a6fc4}
+.upload-card p{margin:8px 0 0;font-size:.82em;color:#6b7280}
+#upload-status{margin-top:10px;font-size:.86em;min-height:20px}
+.progress{height:5px;background:#e5e7eb;border-radius:4px;margin-top:8px;display:none}
+.progress-bar{height:5px;background:#1a6fc4;border-radius:4px;width:0;transition:width .3s}
 
-/* Book grid */
-.books-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
-.book-card{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .15s}
-.book-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.1)}
-.book-title{font-weight:600;font-size:.95em;color:#1f2328;text-decoration:none;line-height:1.3}
-.book-title:hover{color:#4a9edd}
-.book-author{font-size:.82em;color:#6b7280}
-.book-meta{display:flex;gap:10px;flex-wrap:wrap}
-.badge{font-size:.75em;padding:2px 8px;border-radius:12px;font-weight:500}
+/* ── Book grid ── */
+.books-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px}
+.book-card{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:20px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .15s,border-color .15s}
+.book-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.09);border-color:#93b4d0}
+.book-title{font-weight:600;font-size:.95em;color:#1a3a5c;text-decoration:none;line-height:1.35}
+.book-title:hover{color:#1a6fc4}
+.book-author{font-size:.8em;color:#6b7280}
+.book-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.badge{font-size:.73em;padding:2px 8px;border-radius:10px;font-weight:600}
 .badge-indexed{background:#d1fae5;color:#065f46}
 .badge-indexing{background:#fef3c7;color:#92400e}
 .badge-uploaded{background:#e5e7eb;color:#374151}
 .badge-error{background:#fee2e2;color:#991b1b}
-.book-actions{display:flex;gap:8px;margin-top:4px}
-.btn{display:inline-block;padding:5px 14px;border-radius:5px;font-size:.82em;font-weight:500;text-decoration:none;border:none;cursor:pointer}
-.btn-primary{background:#4a9edd;color:#fff}.btn-primary:hover{background:#2980b9}
+.book-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+.btn{display:inline-block;padding:5px 14px;border-radius:5px;font-size:.8em;font-weight:500;text-decoration:none;border:none;cursor:pointer;transition:background .12s}
+.btn-primary{background:#1a3a5c;color:#fff}.btn-primary:hover{background:#1a6fc4}
 .btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}.btn-secondary:hover{background:#e5e7eb}
 .btn-danger{background:#fff;color:#b91c1c;border:1px solid #fca5a5}.btn-danger:hover{background:#fee2e2}
 
-.empty{text-align:center;padding:48px;color:#9ca3af;font-size:.95em}
+/* ── Student welcome ── */
+.welcome-card{background:#fff;border-radius:10px;border:1px solid #e5e7eb;padding:22px 26px;margin-bottom:24px;display:flex;align-items:center;gap:18px}
+.welcome-avatar{width:52px;height:52px;background:#e8f0fe;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.6em;flex-shrink:0}
+.welcome-text h3{font-size:1.05em;font-weight:700;color:#1a3a5c;margin-bottom:3px}
+.welcome-text p{font-size:.83em;color:#6b7280}
+
+/* ── Student quick links ── */
+.student-links{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:28px}
+.sl-card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;text-decoration:none;color:#1f2328;display:flex;align-items:center;gap:14px;transition:box-shadow .15s,border-color .15s}
+.sl-card:hover{box-shadow:0 3px 12px rgba(0,0,0,.08);border-color:#93b4d0}
+.sl-icon{font-size:1.7em;line-height:1;flex-shrink:0}
+.sl-label{font-weight:600;font-size:.88em;color:#1a3a5c}
+.sl-desc{font-size:.75em;color:#6b7280;margin-top:2px}
+
+.empty{text-align:center;padding:48px;color:#9ca3af;font-size:.92em}
+
+/* ── Footer ── */
+footer{text-align:center;padding:14px;font-size:.75em;color:#9ca3af;border-top:1px solid #e5e7eb;background:#fff}
 </style>
 </head>
 <body>
-<header>
-  <h1>📚 Book Knowledge Service</h1>
-  <span>{% if user.is_admin %}Upload · Index · Read · Ask{% else %}Browse · Read{% endif %}</span>
+
+<!-- ── Site header ─────────────────────────────────────────────────── -->
+<header class="site-header">
+  <div class="brand">
+    <div class="brand-icon">🏫</div>
+    <div class="brand-text">
+      <h1>Sri Ganesh School</h1>
+      <span>Digital Learning Platform</span>
+    </div>
+  </div>
+  <nav>
+    <a href="/ui" class="active">🏠 Home</a>
+    <a href="/ui/tasks">📋 Tasks</a>
+    {% if user.is_admin %}
+    <a href="/ui/compiled-pdfs">📄 PDFs</a>
+    <a href="/ui/students">👥 Students</a>
+    {% endif %}
+  </nav>
   {% include "_userbar.html" %}
 </header>
+
+<!-- ── Hero ────────────────────────────────────────────────────────── -->
+<div class="hero">
+  {% if user.is_admin %}
+  <h2>👩‍🏫 Teacher &amp; Admin Portal</h2>
+  <p>Upload books, compile notes and question PDFs, share materials with students, and manage the library.</p>
+  {% else %}
+  <h2>📖 Welcome, {{ user.username }}!</h2>
+  <p>Browse your textbooks, read chapters, view assigned tasks and download shared study materials.</p>
+  {% endif %}
+</div>
+
+<!-- ── Admin quick-action strip ────────────────────────────────────── -->
+{% if user.is_admin %}
+<div class="quick-strip">
+  <span style="font-size:.78em;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Quick actions:</span>
+  <a href="/ui/compiled-pdfs">📄 Compiled PDFs History</a>
+  <a href="/ui/students">👥 Manage Students</a>
+  <a href="/ui/tasks">📋 All Tasks</a>
+</div>
+{% endif %}
 
 <div class="container">
 
   {% if user.is_admin %}
+  <!-- ════════════════════════════════════════════════════════
+       ADMIN HOME
+  ════════════════════════════════════════════════════════ -->
+
   <!-- Upload -->
+  <div class="sec-title">📤 Upload a New Book</div>
   <div class="upload-card" id="drop-zone">
-    <label class="upload-label" for="file-input">＋ Upload a PDF book</label>
+    <label class="upload-label" for="file-input">＋ Choose PDF</label>
     <input type="file" id="file-input" accept=".pdf" onchange="uploadFile(this.files[0])"/>
     <p>or drop a PDF here · max 100 MB</p>
     <div id="upload-status"></div>
     <div class="progress" id="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
   </div>
-  {% endif %}
 
-  {% if user.is_admin %}
-  <div style="margin-bottom:14px;font-size:.85em">
-    <a href="/ui/compiled-pdfs" style="color:#7c5cd8;font-weight:500">📋 Compiled PDFs history</a>
-    <span style="color:#d1d5db;margin:0 8px">|</span>
-    <a href="/ui/students" style="color:#4a9edd;font-weight:500">👥 Manage Students</a>
-    <span style="color:#d1d5db;margin:0 8px">|</span>
-    <a href="/ui/tasks" style="color:#4a9edd;font-weight:500">📋 Tasks</a>
-  </div>
-  {% endif %}
-
-  <!-- Book list -->
-  <h2>{% if user.is_admin %}Your Books{% else %}Books{% endif %} <span id="book-count" style="font-weight:400;color:#6b7280"></span></h2>
+  <!-- Book library -->
+  <div class="sec-title">📚 Book Library <span id="book-count" style="font-size:.85em;font-weight:400;color:#6b7280;text-transform:none;letter-spacing:0"></span></div>
   <div class="books-grid" id="books-grid">
     <div class="empty" id="empty-msg">Loading…</div>
   </div>
 
+  {% else %}
+  <!-- ════════════════════════════════════════════════════════
+       STUDENT HOME
+  ════════════════════════════════════════════════════════ -->
+
+  <!-- Welcome card -->
+  <div class="welcome-card">
+    <div class="welcome-avatar">🎓</div>
+    <div class="welcome-text">
+      <h3>Hello, {{ user.username }}!</h3>
+      <p>You're signed in as a student. Browse books below, check your tasks, or download any materials your teacher has shared.</p>
+    </div>
+  </div>
+
+  <!-- Quick links -->
+  <div class="sec-title">⚡ Quick Links</div>
+  <div class="student-links">
+    <a class="sl-card" href="/ui/tasks">
+      <div class="sl-icon">📋</div>
+      <div><div class="sl-label">My Tasks</div><div class="sl-desc">Questions &amp; PDFs assigned to you</div></div>
+    </a>
+    <a class="sl-card" href="/ui/tasks#pdfs">
+      <div class="sl-icon">📄</div>
+      <div><div class="sl-label">Shared PDFs</div><div class="sl-desc">Notes &amp; question banks from your teacher</div></div>
+    </a>
+  </div>
+
+  <!-- Book library -->
+  <div class="sec-title">📚 Your Books <span id="book-count" style="font-size:.85em;font-weight:400;color:#6b7280;text-transform:none;letter-spacing:0"></span></div>
+  <div class="books-grid" id="books-grid">
+    <div class="empty" id="empty-msg">Loading…</div>
+  </div>
+
+  {% endif %}
 </div>
+
+<footer>Sri Ganesh School · Digital Learning Platform &nbsp;·&nbsp; <a href="/ui/tasks" style="color:#6b7280">Tasks</a></footer>
 
 <script>
 const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
@@ -90,32 +197,32 @@ async function loadBooks() {
   const res = await fetch('/books');
   if (res.status === 401) { location.href = '/login'; return; }
   const data = await res.json();
-  const grid = document.getElementById('books-grid');
+  const grid  = document.getElementById('books-grid');
   const count = document.getElementById('book-count');
   grid.innerHTML = '';
   if (!data.books || data.books.length === 0) {
     grid.innerHTML = IS_ADMIN
-      ? '<div class="empty">No books yet — upload a PDF to get started.</div>'
-      : '<div class="empty">No books available yet.</div>';
+      ? '<div class="empty">No books yet — upload a PDF above to get started.</div>'
+      : '<div class="empty">No books available yet. Ask your teacher to add some.</div>';
     return;
   }
   count.textContent = `(${data.books.length})`;
   data.books.forEach(b => {
-    const statusClass = {indexed:'badge-indexed',indexing:'badge-indexing',uploaded:'badge-uploaded',error:'badge-error'}[b.status] || 'badge-uploaded';
+    const sc = {indexed:'badge-indexed',indexing:'badge-indexing',uploaded:'badge-uploaded',error:'badge-error'}[b.status]||'badge-uploaded';
     const canOpen = b.status === 'indexed';
     grid.innerHTML += `
       <div class="book-card">
         <a class="book-title" href="/ui/books/${b.book_id}">${b.title || b.filename}</a>
-        <div class="book-author">${b.author || '—'}</div>
+        <div class="book-author">${b.author || 'Sri Ganesh School'}</div>
         <div class="book-meta">
-          <span class="badge ${statusClass}">${b.status}</span>
-          ${b.total_pages ? `<span style="font-size:.78em;color:#6b7280">${b.total_pages} pages</span>` : ''}
+          <span class="badge ${sc}">${b.status}</span>
+          ${b.total_pages ? `<span style="font-size:.76em;color:#6b7280">${b.total_pages} pages</span>` : ''}
         </div>
         <div class="book-actions">
           ${canOpen ? `<a class="btn btn-primary" href="/ui/books/${b.book_id}">Open</a>` : ''}
-          ${IS_ADMIN && b.status === 'uploaded' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}', this)">Index</button>` : ''}
-          ${IS_ADMIN && b.status === 'error' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}', this)">Retry Index</button>` : ''}
-          ${IS_ADMIN ? `<button class="btn btn-danger" onclick="deleteBook('${b.book_id}', this)">Delete</button>` : ''}
+          ${IS_ADMIN && b.status==='uploaded' ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}',this)">Index</button>` : ''}
+          ${IS_ADMIN && b.status==='error'    ? `<button class="btn btn-secondary" onclick="indexBook('${b.book_id}',this)">Retry</button>` : ''}
+          ${IS_ADMIN ? `<button class="btn btn-danger" onclick="deleteBook('${b.book_id}',this)">Delete</button>` : ''}
         </div>
       </div>`;
   });
@@ -125,10 +232,7 @@ async function deleteBook(bookId, btn) {
   if (!confirm('Delete this book and all its chapters, questions and files? This cannot be undone.')) return;
   btn.disabled = true; btn.textContent = 'Deleting…';
   const res = await fetch(`/books/${bookId}`, {method:'DELETE'});
-  if (!res.ok) {
-    const d = await res.json().catch(() => ({}));
-    alert('Delete failed: ' + (d.detail || res.status));
-  }
+  if (!res.ok) { const d = await res.json().catch(()=>({})); alert('Delete failed: '+(d.detail||res.status)); }
   loadBooks();
 }
 
@@ -141,36 +245,36 @@ async function indexBook(bookId, btn) {
 async function uploadFile(file) {
   if (!file) return;
   const status = document.getElementById('upload-status');
-  const bar = document.getElementById('progress-bar');
-  const wrap = document.getElementById('progress-wrap');
+  const bar    = document.getElementById('progress-bar');
+  const wrap   = document.getElementById('progress-wrap');
   status.textContent = `Uploading ${file.name}…`;
   wrap.style.display = 'block'; bar.style.width = '30%';
   const fd = new FormData(); fd.append('file', file);
   try {
     const res = await fetch('/books', {method:'POST', body:fd});
     bar.style.width = '70%';
-    if (res.status === 409) { status.textContent = '⚠ Book already uploaded.'; bar.style.width='0'; return; }
+    if (res.status === 409) { status.textContent = '⚠ This book is already uploaded.'; bar.style.width='0'; return; }
     if (!res.ok) { status.textContent = '✗ Upload failed.'; bar.style.width='0'; return; }
     const book = await res.json();
     bar.style.width = '85%';
-    status.textContent = `Indexing ${book.title || file.name}…`;
+    status.textContent = `Indexing "${book.title || file.name}"…`;
     await fetch(`/books/${book.book_id}/index`, {method:'POST'});
     bar.style.width = '100%';
-    status.textContent = `✓ ${book.title || file.name} uploaded and indexing started.`;
+    status.textContent = `✓ "${book.title || file.name}" uploaded — indexing started.`;
     setTimeout(() => { wrap.style.display='none'; bar.style.width='0'; status.textContent=''; loadBooks(); }, 3000);
   } catch(e) { status.textContent = '✗ Error: ' + e.message; }
 }
 
-// Drag-and-drop (admin only — the drop zone is not rendered for students)
+// Drag-and-drop (admin only)
 const dz = document.getElementById('drop-zone');
 if (dz) {
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor='#4a9edd'; });
-  dz.addEventListener('dragleave', () => { dz.style.borderColor=''; });
-  dz.addEventListener('drop', e => { e.preventDefault(); dz.style.borderColor=''; uploadFile(e.dataTransfer.files[0]); });
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.style.borderColor='#1a6fc4'; });
+  dz.addEventListener('dragleave', ()  => { dz.style.borderColor=''; });
+  dz.addEventListener('drop',      e  => { e.preventDefault(); dz.style.borderColor=''; uploadFile(e.dataTransfer.files[0]); });
 }
 
 loadBooks();
-setInterval(loadBooks, 8000); // auto-refresh for indexing status
+setInterval(loadBooks, 8000);
 </script>
 </body>
 </html>
