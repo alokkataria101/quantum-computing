@@ -6,8 +6,12 @@
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,sans-serif;background:#f0f2f5;color:#1f2328;min-height:100vh}
-header{background:#1e2a3a;color:#e0e6f0;padding:14px 32px;display:flex;align-items:center;gap:16px}
-header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
+header{background:#1a3a5c;color:#e0e6f0;padding:10px 32px;display:flex;align-items:center;gap:16px;min-height:54px}
+header .brand{display:flex;align-items:center;gap:10px;flex:1}
+header .brand img{width:38px;height:38px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+header .brand-text{line-height:1.2}
+header .brand-text strong{font-size:1em;font-weight:700;display:block}
+header .brand-text span{font-size:.7em;color:#93b4d0;text-transform:uppercase;letter-spacing:.05em}
 .container{max-width:960px;margin:28px auto;padding:0 24px}
 .bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
 .bar h2{margin:0;font-size:1em;font-weight:600}
@@ -46,11 +50,13 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
 </head>
 <body>
 <header>
-  <h1>
-    <a href="/ui" style="color:#8fa0b0;text-decoration:none">📚 Library</a>
-    <span style="color:#4a5568;margin:0 8px">›</span>
-    Compiled PDFs
-  </h1>
+  <div class="brand">
+    <a href="/ui"><img src="/static/logo.svg" alt="SGS"/></a>
+    <div class="brand-text">
+      <strong>Sri Ganesh School</strong>
+      <span><a href="/ui" style="color:#93b4d0;text-decoration:none">Library</a> › Compiled PDFs</span>
+    </div>
+  </div>
   {% include "_userbar.html" %}
 </header>
 

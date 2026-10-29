@@ -108,9 +108,13 @@ def build_notes_pdf(
 
     # Title page
     tp = out.new_page(width=W, height=H)
-    tp.insert_text((MARGIN, 70), ascii_text(book_title), fontsize=22, fontname="hebo")
-    tp.insert_text((MARGIN, 94), "Chapter Notes — rendered from original pages",
+    from .question_pdf import _insert_logo
+    _insert_logo(tp, W / 2 - 44, 30, 88)       # centred logo
+    tp.insert_text((MARGIN, 138), ascii_text(book_title), fontsize=22, fontname="hebo")
+    tp.insert_text((MARGIN, 162), "Chapter Notes — rendered from original pages",
                    fontsize=11, fontname="helv")
+    tp.insert_text((MARGIN, 178), "Sri Ganesh School", fontsize=9, fontname="helv",
+                   color=(0.25, 0.35, 0.55))
 
     usable_w = W - 2 * MARGIN
 

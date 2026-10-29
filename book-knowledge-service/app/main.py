@@ -11,6 +11,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import auth as auth_module
@@ -140,6 +141,11 @@ app = FastAPI(
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 templates.env.auto_reload = True  # re-read templates from disk on every request (no restart needed)
+
+# ── Static files ──────────────────────────────────────────────────────────────
+_static_dir = Path(__file__).parent.parent / "static"
+_static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth_router.router)

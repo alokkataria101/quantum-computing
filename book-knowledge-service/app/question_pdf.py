@@ -606,13 +606,47 @@ def build_book_pdf(src_pdf: Path, out_pdf: Path, specs: list[ChapterSpec],
     return {"pages": out.page_count, "totals": {k.value: v for k, v in totals.items()}}
 
 
+# ── school logo helper ────────────────────────────────────────────────────────
+
+_LOGO_PATH = Path(__file__).resolve().parent.parent / "static" / "logo.svg"
+_LOGO_PNG_CACHE: Optional[bytes] = None
+
+
+def _logo_png(size: int = 80) -> Optional[bytes]:
+    """Render the SVG school logo to PNG bytes (cached). Returns None if unavailable."""
+    global _LOGO_PNG_CACHE
+    if _LOGO_PNG_CACHE is not None:
+        return _LOGO_PNG_CACHE
+    if not _LOGO_PATH.exists():
+        return None
+    try:
+        svg_doc = fitz.open(_LOGO_PATH)
+        pix = svg_doc[0].get_pixmap(dpi=int(size * 72 / 160))   # 160 = SVG viewBox size
+        _LOGO_PNG_CACHE = pix.tobytes("png")
+        svg_doc.close()
+    except Exception:
+        _LOGO_PNG_CACHE = b""   # don't retry
+    return _LOGO_PNG_CACHE or None
+
+
+def _insert_logo(page, x: float, y: float, size: float = 52.0) -> None:
+    """Insert the school logo into a PDF page at (x, y) with given size in pts."""
+    png = _logo_png()
+    if png:
+        page.insert_image(fitz.Rect(x, y, x + size, y + size), stream=png)
+
+
 def _write_contents(out, toc_pages: int, book_title: str, contents, totals, src_name: str) -> None:
     p = out[0]
+    # Logo top-right
+    _insert_logo(p, W - MARGIN - 52, 22, 52)
+    # Title block
     p.insert_text((MARGIN, 60), ascii_text(book_title), fontsize=20, fontname="hebo")
     p.insert_text((MARGIN, 80), "Question bank - cropped from the original pages", fontsize=10, fontname="helv")
     p.insert_text((MARGIN, 94), ascii_text(f"Source: {src_name}"), fontsize=8, fontname="helv", color=(0.4, 0.4, 0.4))
+    p.insert_text((MARGIN, 106), "Sri Ganesh School", fontsize=8, fontname="helv", color=(0.25, 0.35, 0.55))
     summary = "   ".join(f"{_CAT_SHORT[k]}: {totals[k]}" for k, _t, _s in CATEGORIES if totals[k])
-    p.insert_text((MARGIN, 110), ascii_text(summary), fontsize=8, fontname="helv")
+    p.insert_text((MARGIN, 118), ascii_text(summary), fontsize=8, fontname="helv")
     y, pi = 134.0, 0
     page = out[0]
     for level, text, pg, count in contents:

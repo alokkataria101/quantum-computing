@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <!-- Outer shield -->
+  <path d="M80 8 L148 36 L148 90 Q148 130 80 154 Q12 130 12 90 L12 36 Z"
+        fill="#1a3a5c" stroke="#c9a84c" stroke-width="3.5"/>
+  <!-- Inner shield highlight -->
+  <path d="M80 18 L138 42 L138 90 Q138 124 80 145 Q22 124 22 90 L22 42 Z"
+        fill="none" stroke="#c9a84c" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- Open book icon -->
+  <g transform="translate(80,62)">
+    <!-- Left page -->
+    <path d="M-22,14 Q-22,-14 0,-18 L0,14 Z" fill="#ffffff" opacity="0.92"/>
+    <!-- Right page -->
+    <path d="M22,14 Q22,-14 0,-18 L0,14 Z" fill="#e8f0fe" opacity="0.92"/>
+    <!-- Spine line -->
+    <line x1="0" y1="-18" x2="0" y2="14" stroke="#c9a84c" stroke-width="1.8"/>
+    <!-- Page lines left -->
+    <line x1="-18" y1="-4"  x2="-4"  y2="-6"  stroke="#1a3a5c" stroke-width="1" opacity="0.5"/>
+    <line x1="-18" y1="2"   x2="-4"  y2="0"    stroke="#1a3a5c" stroke-width="1" opacity="0.5"/>
+    <line x1="-18" y1="8"   x2="-4"  y2="6"    stroke="#1a3a5c" stroke-width="1" opacity="0.5"/>
+    <!-- Page lines right -->
+    <line x1="18"  y1="-4"  x2="4"   y2="-6"  stroke="#1a3a5c" stroke-width="1" opacity="0.5"/>
+    <line x1="18"  y1="2"   x2="4"   y2="0"    stroke="#1a3a5c" stroke-width="1" opacity="0.5"/>
+    <line x1="18"  y1="8"   x2="4"   y2="6"    stroke="#1a3a5c" stroke-width="1" opacity="0.5"/>
+    <!-- Base line -->
+    <line x1="-22" y1="14" x2="22" y2="14" stroke="#c9a84c" stroke-width="1.5"/>
+  </g>
+
+  <!-- Torch flame above book -->
+  <g transform="translate(80,30)">
+    <ellipse cx="0" cy="0" rx="5" ry="8" fill="#f59e0b" opacity="0.9"/>
+    <ellipse cx="-2" cy="2" rx="3" ry="5" fill="#fcd34d"/>
+    <rect x="-2" y="7" width="4" height="10" rx="1" fill="#c9a84c"/>
+  </g>
+
+  <!-- Gold banner ribbon -->
+  <path d="M30,112 Q80,122 130,112 L125,124 Q80,135 35,124 Z"
+        fill="#c9a84c"/>
+  <!-- Banner text: SGS -->
+  <text x="80" y="122" font-family="Georgia,serif" font-size="10" font-weight="700"
+        fill="#1a3a5c" text-anchor="middle" letter-spacing="2">SGS</text>
+
+  <!-- Stars at top corners -->
+  <text x="30"  y="46" font-size="9" fill="#c9a84c" text-anchor="middle" opacity="0.8">★</text>
+  <text x="130" y="46" font-size="9" fill="#c9a84c" text-anchor="middle" opacity="0.8">★</text>
+</svg>

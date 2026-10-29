@@ -9,10 +9,11 @@
 body{font-family:system-ui,'Segoe UI',sans-serif;min-height:100vh;background:#f0f4f8;display:flex;flex-direction:column}
 
 /* ── Top banner ── */
-.school-banner{background:#1a3a5c;color:#fff;text-align:center;padding:28px 24px 22px}
-.school-banner .emblem{font-size:2.6em;line-height:1;margin-bottom:6px}
-.school-banner h1{font-size:1.55em;font-weight:700;letter-spacing:.02em;margin-bottom:2px}
-.school-banner .tagline{font-size:.82em;color:#93b4d0;letter-spacing:.06em;text-transform:uppercase}
+.school-banner{background:#1a3a5c;color:#fff;padding:16px 32px;display:flex;align-items:center;justify-content:center;gap:18px}
+.banner-logo{width:64px;height:64px;flex-shrink:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3))}
+.banner-words{text-align:left}
+.school-banner h1{font-size:1.45em;font-weight:700;letter-spacing:.02em;margin-bottom:2px;line-height:1.1}
+.school-banner .tagline{font-size:.76em;color:#93b4d0;letter-spacing:.07em;text-transform:uppercase}
 
 /* ── Main area ── */
 .main{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 16px}
@@ -38,9 +39,11 @@ footer{text-align:center;padding:14px;font-size:.75em;color:#9ca3af;border-top:1
 <body>
 
 <div class="school-banner">
-  <div class="emblem">🏫</div>
-  <h1>Sri Ganesh School</h1>
-  <div class="tagline">Knowledge · Discipline · Excellence</div>
+  <img src="/static/logo.svg" alt="Sri Ganesh School Crest" class="banner-logo"/>
+  <div class="banner-words">
+    <h1>Sri Ganesh School</h1>
+    <div class="tagline">Knowledge · Discipline · Excellence</div>
+  </div>
 </div>
 
 <div class="main">
