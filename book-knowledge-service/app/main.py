@@ -9,13 +9,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from . import auth as auth_module
+from .auth import User, page_admin, page_user
 from .config import settings
 from .database import init_db, close_db, get_db
-from .routers import books, index, questions, jobs_export, ai
+from .routers import books, index, questions, jobs_export, ai, shared, compile as compile_router
+from .routers import auth as auth_router
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -38,9 +41,9 @@ async def _autoload_intake_books() -> None:
 
     from .database import get_db as _get_db
     from .storage import save_uploaded_pdf, compute_sha256, book_path
-    from .pdf_processor import extract_pdf_meta, extract_pages
+    from .pdf_processor import extract_pdf_meta, extract_pages, run_pdf
     from .chapter_parser import detect_chapters
-    from .indexer import upsert_pages, upsert_chapters, rebuild_fts, update_book_status
+    from .indexer import upsert_pages, upsert_chapters, rebuild_fts, update_book_status, delete_stale_chapters
 
     db = await _get_db()
 
@@ -60,7 +63,7 @@ async def _autoload_intake_books() -> None:
             await save_uploaded_pdf(data, book_id)
 
             try:
-                meta = extract_pdf_meta(book_path(book_id))
+                meta = await run_pdf(extract_pdf_meta, book_path(book_id))
                 title       = meta.title or pdf_path.stem
                 author      = meta.author or ""
                 total_pages = meta.total_pages
@@ -84,16 +87,17 @@ async def _autoload_intake_books() -> None:
             async def _index(bid: str = book_id, path: Path = book_path(book_id)) -> None:
                 try:
                     await update_book_status(bid, "indexing")
-                    meta2   = extract_pdf_meta(path)
-                    pages   = extract_pages(path, ocr_enabled=settings.ocr_enabled,
+                    meta2   = await run_pdf(extract_pdf_meta, path)
+                    pages   = await run_pdf(extract_pages, path, ocr_enabled=settings.ocr_enabled,
                                             ocr_language=settings.ocr_language,
                                             dpi=settings.render_dpi)
-                    chaps   = detect_chapters(bid, meta2, pages)
+                    chaps   = await asyncio.to_thread(detect_chapters, bid, meta2, pages)
                     await upsert_chapters(chaps)
                     ch_map  = {pn: ch.chapter_id
                                for ch in chaps
                                for pn in range(ch.page_start, ch.page_end + 1)}
                     await upsert_pages(bid, pages, ch_map)
+                    await delete_stale_chapters(bid, [ch.chapter_id for ch in chaps])
                     await rebuild_fts(bid)
                     await update_book_status(bid, "indexed",
                                              total_pages=len(pages),
@@ -115,6 +119,7 @@ async def lifespan(app: FastAPI):
     settings.books_dir.mkdir(parents=True, exist_ok=True)
     settings.indexes_dir.mkdir(parents=True, exist_ok=True)
     settings.exports_dir.mkdir(parents=True, exist_ok=True)
+    auth_module.ensure_auth_files()
     await init_db()
     await _autoload_intake_books()
     logger.info("book-knowledge-service started.")
@@ -137,11 +142,14 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 templates.env.auto_reload = True  # re-read templates from disk on every request (no restart needed)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(auth_router.router)
 app.include_router(books.router)
 app.include_router(index.router)
 app.include_router(questions.router)
 app.include_router(jobs_export.router)
 app.include_router(ai.router)
+app.include_router(shared.router)
+app.include_router(compile_router.router)
 
 
 # ── HTML page viewer ──────────────────────────────────────────────────────────
@@ -151,6 +159,7 @@ async def viewer(
     request: Request,
     book_id: str,
     page: int = Query(1, ge=1),
+    user: User = Depends(page_user),
 ):
     db = await get_db()
 
@@ -219,17 +228,47 @@ async def viewer(
     )
 
 
+# ── UI — Login / logout ───────────────────────────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+async def login_page(request: Request):
+    if auth_module.current_user(request):
+        return RedirectResponse("/ui", status_code=303)
+    return templates.TemplateResponse(request=request, name="login.html", context={})
+
+
 # ── UI — Library home page ────────────────────────────────────────────────────
 
 @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
-async def ui_home(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html", context={})
+async def ui_home(request: Request, user: User = Depends(page_user)):
+    return templates.TemplateResponse(request=request, name="index.html", context={"user": user})
+
+
+# ── UI — Assigned tasks (student: mine; admin: everything shared) ─────────────
+
+@app.get("/ui/tasks", response_class=HTMLResponse, include_in_schema=False)
+async def ui_tasks(request: Request, user: User = Depends(page_user)):
+    return templates.TemplateResponse(request=request, name="tasks.html", context={"user": user})
+
+
+# ── UI — Student management (admin only) ─────────────────────────────────────
+
+@app.get("/ui/students", response_class=HTMLResponse, include_in_schema=False)
+async def ui_students(request: Request, user: User = Depends(page_admin)):
+    return templates.TemplateResponse(request=request, name="students.html", context={"user": user})
+
+
+# ── UI — Compiled PDFs history (admin only) ───────────────────────────────────
+
+@app.get("/ui/compiled-pdfs", response_class=HTMLResponse, include_in_schema=False)
+async def ui_compiled_pdfs(request: Request, user: User = Depends(page_admin)):
+    return templates.TemplateResponse(request=request, name="compiled_pdfs.html", context={"user": user})
 
 
 # ── UI — Book detail (chapters list) ─────────────────────────────────────────
 
 @app.get("/ui/books/{book_id}", response_class=HTMLResponse, include_in_schema=False)
-async def ui_book(request: Request, book_id: str):
+async def ui_book(request: Request, book_id: str, user: User = Depends(page_user)):
     db = await get_db()
 
     async with db.execute("SELECT * FROM books WHERE book_id = ?", (book_id,)) as cur:
@@ -258,14 +297,14 @@ async def ui_book(request: Request, book_id: str):
 
     return templates.TemplateResponse(
         request=request, name="book.html",
-        context={"book": book, "chapters": chapters},
+        context={"book": book, "chapters": chapters, "user": user},
     )
 
 
 # ── UI — Chapter page (reader + questions + AI ask) ───────────────────────────
 
 @app.get("/ui/books/{book_id}/chapters/{chapter_id}", response_class=HTMLResponse, include_in_schema=False)
-async def ui_chapter(request: Request, book_id: str, chapter_id: str):
+async def ui_chapter(request: Request, book_id: str, chapter_id: str, user: User = Depends(page_user)):
     db = await get_db()
 
     async with db.execute("SELECT * FROM books WHERE book_id = ?", (book_id,)) as cur:
@@ -311,6 +350,7 @@ async def ui_chapter(request: Request, book_id: str, chapter_id: str):
             "chapter": chapter,
             "prev_chapter": prev_chapter,
             "next_chapter": next_chapter,
+            "user": user,
         },
     )
 
@@ -324,6 +364,7 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs",
         "ui": "/ui",
+        "login": "/login",
         "redoc": "/redoc",
     }
 

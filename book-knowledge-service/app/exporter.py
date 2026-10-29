@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import html as _html
 import io
 import json
 import logging
@@ -130,7 +131,10 @@ def to_pdf(
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, title=book_title)
     styles = getSampleStyleSheet()
-    story = [Paragraph(f"{book_title} — Extracted Questions", styles["Title"]), Spacer(1, 20)]
+    # Question text comes from PDFs and often contains '<', '>' and '&'
+    # (e.g. "a < b"); ReportLab parses paragraphs as XML-ish markup, so escape it.
+    esc = lambda s: _html.escape(s or "", quote=False)
+    story = [Paragraph(f"{esc(book_title)} — Extracted Questions", styles["Title"]), Spacer(1, 20)]
 
     ch_map = {c.chapter_id: c for c in chapters}
     current_ch: Optional[str] = None
@@ -138,19 +142,19 @@ def to_pdf(
     for q in questions:
         if q.chapter_id != current_ch:
             ch = ch_map.get(q.chapter_id)
-            title = ch.title if ch else q.chapter_id
-            story.append(Paragraph(f"Chapter {q.chapter_number}: {title}", styles["Heading2"]))
+            title = " ".join((ch.title if ch else q.chapter_id).split())
+            story.append(Paragraph(f"Chapter {q.chapter_number}: {esc(title)}", styles["Heading2"]))
             current_ch = q.chapter_id
 
         num = f"[{q.question_number}] " if q.question_number else ""
         story.append(Paragraph(
-            f"<b>{q.question_type.value} {num}</b> {q.question_text}",
+            f"<b>{q.question_type.value} {num}</b> {esc(q.question_text)}",
             styles["Normal"],
         ))
         if include_solutions and q.solution_text:
-            story.append(Paragraph(f"<i>Solution:</i> {q.solution_text}", styles["Normal"]))
+            story.append(Paragraph(f"<i>Solution:</i> {esc(q.solution_text)}", styles["Normal"]))
         if include_solutions and q.answer_text:
-            story.append(Paragraph(f"<i>Answer:</i> {q.answer_text}", styles["Normal"]))
+            story.append(Paragraph(f"<i>Answer:</i> {esc(q.answer_text)}", styles["Normal"]))
         story.append(Spacer(1, 6))
 
     doc.build(story)

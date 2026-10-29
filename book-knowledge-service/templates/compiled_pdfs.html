@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Compiled PDFs — Book Knowledge Service</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:#f0f2f5;color:#1f2328;min-height:100vh}
+header{background:#1e2a3a;color:#e0e6f0;padding:14px 32px;display:flex;align-items:center;gap:16px}
+header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
+.container{max-width:960px;margin:28px auto;padding:0 24px}
+.bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.bar h2{margin:0;font-size:1em;font-weight:600}
+.sub{font-size:.83em;color:#6b7280}
+.filter-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.filter-row select,.filter-row input{border:1px solid #d1d5db;border-radius:5px;padding:5px 9px;font-size:.85em}
+.btn{display:inline-block;padding:6px 16px;border-radius:6px;font-size:.85em;font-weight:500;text-decoration:none;border:none;cursor:pointer}
+.btn-primary{background:#4a9edd;color:#fff}.btn-primary:hover{background:#2980b9}
+.btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}.btn-secondary:hover{background:#e5e7eb}
+.btn-sm{padding:4px 11px;font-size:.78em}
+.btn-dl{background:#065f46;color:#fff}.btn-dl:hover{background:#044033}
+.btn-share{background:#0369a1;color:#fff}.btn-share:hover{background:#024d7a}
+.badge{font-size:.72em;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:10px}
+.badge-questions{background:#e0f2fe;color:#0369a1}
+.badge-notes{background:#dcfce7;color:#166534}
+.badge-both{background:#f3e8ff;color:#6b21a8}
+.badge-shared{background:#fef9c3;color:#854d0e}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:16px 20px;margin-bottom:10px;display:flex;gap:16px;align-items:flex-start}
+.card:hover{border-color:#b8d0e8;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.card-main{flex:1}
+.card-title{font-weight:600;font-size:.93em;margin-bottom:3px}
+.card-meta{font-size:.77em;color:#6b7280;line-height:1.7}
+.card-actions{display:flex;gap:7px;flex-shrink:0;flex-wrap:wrap;align-items:center}
+.empty{text-align:center;padding:48px;color:#9ca3af;font-size:.95em}
+/* Share dialog overlay */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:100;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.dialog{background:#fff;border-radius:10px;padding:24px 28px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.18)}
+.dialog h3{margin:0 0 14px;font-size:1em}
+.dialog label{display:block;font-size:.84em;font-weight:500;margin-bottom:4px}
+.dialog input{width:100%;border:1px solid #d1d5db;border-radius:5px;padding:7px 10px;font-size:.88em;margin-bottom:12px;font-family:inherit}
+.dialog .hint{font-size:.76em;color:#6b7280;margin-top:-8px;margin-bottom:12px}
+.dialog-actions{display:flex;gap:8px;justify-content:flex-end}
+#dlg-status{font-size:.8em;color:#6b7280;margin-top:8px;min-height:16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>
+    <a href="/ui" style="color:#8fa0b0;text-decoration:none">📚 Library</a>
+    <span style="color:#4a5568;margin:0 8px">›</span>
+    Compiled PDFs
+  </h1>
+  {% include "_userbar.html" %}
+</header>
+
+<div class="container">
+  <div class="bar">
+    <div>
+      <h2>All Compiled PDFs</h2>
+      <div class="sub" id="summary">Loading…</div>
+    </div>
+    <div class="filter-row">
+      <select id="filter-book" onchange="render()">
+        <option value="">All books</option>
+      </select>
+      <select id="filter-mode" onchange="render()">
+        <option value="">All modes</option>
+        <option value="questions">Questions</option>
+        <option value="notes">Notes</option>
+        <option value="both">Both</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="list"><div class="empty">Loading…</div></div>
+</div>
+
+<!-- Share dialog -->
+<div class="overlay" id="share-overlay" onclick="if(event.target===this)closeDialog()">
+  <div class="dialog">
+    <h3>📤 Share PDF with Students</h3>
+    <label>Label shown to students</label>
+    <input type="text" id="dlg-label" placeholder="e.g. Physics — Ch 3 Notes"/>
+    <label>Specific students (optional)</label>
+    <input type="text" id="dlg-students" placeholder="alice, bob  — leave blank for ALL"/>
+    <div class="hint">Comma-separated usernames. Leave blank to share with every student.</div>
+    <div class="dialog-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeDialog()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="confirmShare()">✓ Share now</button>
+    </div>
+    <div id="dlg-status"></div>
+  </div>
+</div>
+
+<script>
+let _all = [];
+let _pendingCompileId = null;
+let _pendingLabel     = '';
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmt(iso) {
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+async function load() {
+  const res = await fetch('/compiled-pdfs');
+  if (res.status === 401) { location.href = '/login'; return; }
+  if (!res.ok) { document.getElementById('list').innerHTML = '<div class="empty">Could not load data.</div>'; return; }
+  const d = await res.json();
+  _all = d.pdfs || [];
+
+  // Populate book filter
+  const books = [...new Map(_all.map(p => [p.book_id, p.book_title || p.book_id])).entries()];
+  const sel = document.getElementById('filter-book');
+  books.forEach(([id, title]) => {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = title;
+    sel.appendChild(opt);
+  });
+
+  render();
+}
+
+function render() {
+  const bookFilter = document.getElementById('filter-book').value;
+  const modeFilter = document.getElementById('filter-mode').value;
+  const items = _all.filter(p =>
+    (!bookFilter || p.book_id === bookFilter) &&
+    (!modeFilter || p.mode === modeFilter)
+  );
+
+  document.getElementById('summary').textContent =
+    `${items.length} of ${_all.length} compiled PDF${_all.length !== 1 ? 's' : ''}`;
+
+  const list = document.getElementById('list');
+  if (!items.length) {
+    list.innerHTML = '<div class="empty">No compiled PDFs yet. Go to a book page and use the Compile PDF panel.</div>';
+    return;
+  }
+
+  list.innerHTML = items.map(p => `
+    <div class="card">
+      <div class="card-main">
+        <div class="card-title">
+          ${esc(p.label || p.book_title || 'PDF')}
+          <span class="badge badge-${esc(p.mode)}">${esc(p.mode)}</span>
+          ${p.is_shared ? '<span class="badge badge-shared">shared</span>' : ''}
+        </div>
+        <div class="card-meta">
+          <strong>${esc(p.book_title || p.book_id)}</strong> ·
+          ${esc(p.chapters_desc)} ·
+          ${p.page_count} page${p.page_count !== 1 ? 's' : ''} ·
+          Compiled ${fmt(p.created_at)} by ${esc(p.created_by)}
+        </div>
+      </div>
+      <div class="card-actions">
+        <a class="btn btn-sm btn-dl" href="/compiled-pdfs/${esc(p.compile_id)}/download">⬇ Download</a>
+        <button class="btn btn-sm btn-share" onclick="openShare('${esc(p.compile_id)}','${esc(p.label || p.book_title || '')}')">📤 Share</button>
+        <a class="btn btn-secondary btn-sm" href="/ui/books/${esc(p.book_id)}">Open Book</a>
+      </div>
+    </div>`).join('');
+}
+
+function openShare(compileId, defaultLabel) {
+  _pendingCompileId = compileId;
+  document.getElementById('dlg-label').value = defaultLabel;
+  document.getElementById('dlg-students').value = '';
+  document.getElementById('dlg-status').textContent = '';
+  document.getElementById('share-overlay').classList.add('open');
+  document.getElementById('dlg-label').focus();
+}
+
+function closeDialog() {
+  document.getElementById('share-overlay').classList.remove('open');
+  _pendingCompileId = null;
+}
+
+async function confirmShare() {
+  if (!_pendingCompileId) return;
+  const label    = document.getElementById('dlg-label').value.trim();
+  const raw      = document.getElementById('dlg-students').value.trim();
+  const students = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : null;
+  const status   = document.getElementById('dlg-status');
+  status.textContent = 'Sharing…';
+  try {
+    const res = await fetch(`/compiled-pdfs/${encodeURIComponent(_pendingCompileId)}/share`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({label, students}),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    const d = await res.json();
+    const who = d.assigned_to && d.assigned_to.length
+      ? `shared with ${d.assigned_to.join(', ')}`
+      : 'shared with all students';
+    status.textContent = `✓ PDF ${who}.`;
+    // Mark as shared in local data and re-render
+    const item = _all.find(p => p.compile_id === _pendingCompileId);
+    if (item) item.is_shared = true;
+    setTimeout(() => { closeDialog(); render(); }, 1200);
+  } catch (e) {
+    status.textContent = '✗ ' + e.message;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

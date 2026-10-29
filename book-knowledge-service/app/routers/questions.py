@@ -6,8 +6,9 @@ import asyncio
 import random as _random
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..auth import require_admin, require_user
 from ..database import get_db
 from ..jobs import create_job, update_job
 from ..models import (
@@ -16,7 +17,7 @@ from ..models import (
 )
 from ..question_extractor import extract_questions_from_chapter
 
-router = APIRouter(tags=["questions"])
+router = APIRouter(tags=["questions"], dependencies=[Depends(require_user)])
 
 
 async def _get_chapter(book_id: str, chapter_id: str) -> ChapterRecord:
@@ -91,6 +92,12 @@ async def start_extraction(book_id: str, chapter_id: str):
     job_id = await create_job(JobType.extract, book_id, chapter_id)
 
     async def _do_extract():
+        try:
+            await _run_extract()
+        except Exception as exc:
+            await update_job(job_id, status="failed", error=str(exc), message="Extraction failed.")
+
+    async def _run_extract():
         # Load chapter pages from DB
         async with db.execute(
             "SELECT page_number, text FROM pages WHERE book_id = ? AND page_number BETWEEN ? AND ? ORDER BY page_number",
@@ -100,7 +107,7 @@ async def start_extraction(book_id: str, chapter_id: str):
         pages = [{"page_number": r["page_number"], "text": r["text"]} for r in rows]
 
         await update_job(job_id, progress=0.3, message="Extracting questions…")
-        questions = extract_questions_from_chapter(book_id, chapter, pages)
+        questions = await asyncio.to_thread(extract_questions_from_chapter, book_id, chapter, pages)
 
         # Delete existing questions for this chapter
         await db.execute(
@@ -159,6 +166,7 @@ def _row_to_q(row) -> QuestionRecord:
 @router.get(
     "/books/{book_id}/questions/generate",
     response_model=GenerateResult,
+    dependencies=[Depends(require_admin)],
     summary="Generate N questions on a topic",
     description=(
         "Find chapters whose title matches `topic`, then return `count` questions "

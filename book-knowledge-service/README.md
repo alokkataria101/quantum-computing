@@ -4,12 +4,70 @@ A FastAPI microservice for PDF textbook ingestion, full-text search, page viewin
 
 ---
 
+## Authentication
+
+Every page and API endpoint requires a login, except `/login`, `/auth/login`, `/health`, `/` and the API docs (`/docs`, `/redoc`). There are two user types:
+
+| | Admin | Student |
+|---|:---:|:---:|
+| List books, read pages, view chapters, search | ✅ | ✅ |
+| View extracted questions, export | ✅ | ✅ |
+| **⚙ Extract** questions from a chapter | ✅ | ✅ |
+| **💬 Ask AI** about the whole book or one chapter | ✅ | ✅ |
+| **📢 Shared** tab — questions the admin has published | ✅ | ✅ (read-only) |
+| **⚡ Generate** AI questions | ✅ | — |
+| Edit, share and unshare generated questions | ✅ | — |
+| Upload / delete / index books | ✅ | — |
+| Add students | ✅ | — |
+
+**Generate → edit → share → students see it.** On a chapter page the admin opens **⚡ Generate**, creates questions, and on each one can click **✎ Edit** (question, options, answer, hint) and **📢 Share** — or **Share all in batch**. Shared questions are saved in the database and appear in every user's **📢 Shared** tab for that chapter. The admin can edit or **Unshare** them there at any time. They survive re-indexing and are removed only when the book is deleted.
+
+**Credentials are plain-text files** (`username:password`, one per line, `#` comments allowed), kept in `storage/auth/` (git-ignored):
+
+```
+storage/auth/admins.txt      # created on first start with:  admin:adminpassword
+storage/auth/students.txt    # appended to when an admin adds a student
+```
+
+> **Change the default admin password** by editing `storage/auth/admins.txt`. The files are re-read on every login, so edits apply without a restart. Passwords are stored unhashed by design — fine for local use, not for a public deployment (use HTTPS and a reverse proxy at minimum).
+
+Sign in at **http://localhost:8000/login** (choose *Admin* or *Student*). Admins get a **Students** link in the header to add students (name + password → appended to `students.txt`) and a **Delete** button on each book. Sessions last 12 hours and are stored (token hashed) in `storage/auth/sessions.db`, so they survive a restart and are shared by every server worker.
+
+### Many users at once
+
+Any number of users can be logged in at the same time, each with their own session. Slow work (watsonx calls, PDF indexing/rendering, extraction, export) runs in worker threads, so it never freezes the site for other users. To use more CPU cores, run several worker processes — logins work across all of them:
+
+```bash
+.venv/bin/uvicorn app.main:app --port 8000 --workers 4      # no --reload with --workers
+```
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `AI_MAX_CONCURRENCY` | `4` | Max simultaneous watsonx calls **per worker**; extra requests wait their turn instead of hitting 429 |
+
+Notes: PyMuPDF work is serialised within one worker (it is single-threaded), so extra workers are what give parallel PDF rendering. Only run the PDF indexing job from one place at a time; the SQLite database is shared by all workers.
+
+From the command line:
+
+```bash
+curl -c jar -X POST localhost:8000/auth/login -H 'content-type: application/json' \
+     -d '{"username":"admin","password":"adminpassword","role":"admin"}'
+curl -b jar -X POST localhost:8000/auth/students -H 'content-type: application/json' \
+     -d '{"username":"alice","password":"wonder1"}'
+curl -b jar -X DELETE localhost:8000/books/<book_id>
+```
+
+---
+
 ## Web UI
 
 The service ships with a built-in web interface — no API knowledge needed.
 
 | URL | What you get |
 |-----|-------------|
+| **http://localhost:8000/login** | Sign in as admin or student |
+| **http://localhost:8000/ui/students** | Add students *(admin only)* |
+| **http://localhost:8000/ui/tasks** | Student: *My Tasks* (questions assigned to me). Admin: everything shared, and with whom, with Remove / Clear this chapter / Clear all tasks buttons |
 | **http://localhost:8000/ui** | Library home — all books, upload, index |
 | **http://localhost:8000/ui/books/{book_id}** | Book detail — chapters list, search, re-index |
 | **http://localhost:8000/ui/books/{book_id}/chapters/{chapter_id}** | Chapter page — reader, questions, AI ask |
@@ -19,22 +77,34 @@ The service ships with a built-in web interface — no API knowledge needed.
 - All books shown as cards with live status (uploaded / indexing / indexed / error)
 - Click **Open** to enter a book, or **Index** to trigger indexing manually
 
+### Library home (`/ui`) — admin quick links
+Admins see a shortcut bar: **📋 Compiled PDFs history** · **👥 Manage Students** · **📋 Tasks**
+
 ### Book detail (`/ui/books/{id}`)
 - See all chapters with page ranges — click **Open** for the full chapter UI or **Read** to jump straight to the page viewer
 - Full-text search across the whole book with results linked to pages
+- **💬 Ask AI** — type any question; watsonx answers from the whole book (or any one chapter you pick in the *Search in* list) and lists the chapter and page of every source
 - **Re-index** button with live progress bar; **Extract All Questions** in one click
+- **📄 Compile PDF** *(admin only)* — build a downloadable PDF of notes and/or questions from selected chapters without any AI; after compile succeeds, **📤 Share with Students** and **📋 View all past compiled PDFs →** links appear (see [Compile PDF](#compile-pdf-admin-only))
+
+### Compiled PDFs history (`/ui/compiled-pdfs`) — admin only
+- Lists **every PDF ever compiled** across all books — survives page refresh and restarts
+- Filter by book or mode
+- **⬇ Download** any past PDF · **📤 Share** any past PDF with all students or specific ones
+- "shared" badge shown on already-shared entries
 
 ### Chapter page (`/ui/books/{id}/chapters/{ch_id}`)
 - **Left half**: page-by-page reader — OCR images with keyboard navigation (← →), toggle extracted text
-- **Right half — 3 tabs**:
+- **Right half — tabs**:
   - **Questions** — filtered by type (Exercise / Example / MCQ / Short Answer…), show/hide answers, "Go to page" link
-  - **💬 Ask AI** — type any question, answered by watsonx grounded in this chapter's pages
-  - **⚡ Generate** — pick type (MCQ / Short / Numerical / Mixed), difficulty, and count; AI generates questions with answers
+  - **⚡ Generate** *(admin)* — pick type (MCQ / Short / Numerical / Mixed), difficulty, and count; AI generates questions with answers; edit and share them
+  - **📢 Shared** — questions the admin has published for this chapter
 
 ---
 
 ## Table of Contents
 
+0. [Authentication](#authentication)
 1. [Prerequisites](#prerequisites)
 2. [Get the code](#get-the-code)
 3. [Set up the virtual environment](#set-up-the-virtual-environment)
@@ -213,10 +283,10 @@ Once the server is running, open **http://localhost:8000/ui** in your browser.
 
 1. **Upload** — drag-and-drop a PDF onto the upload area (or click to browse) → indexing starts automatically
 2. **Open** — click the book card once status shows `indexed`
-3. **Chapter** — click **Open** on any chapter row
-4. **Read** — page images load on the left; use ← → keys to navigate
-5. **Questions** — switch to the **Questions** tab to browse extracted exercises and examples; filter by type
-6. **Ask AI** — switch to the **💬 Ask AI** tab, type a question, get an answer grounded in the chapter text
+3. **Ask AI** — on the book page, type a question under **💬 Ask AI**; the answer comes from the whole book (or one chapter, via *Search in*) with the chapter and page of each source
+4. **Chapter** — click **Open** on any chapter row
+5. **Read** — page images load on the left; use ← → keys to navigate
+6. **Questions** — switch to the **Questions** tab to browse extracted exercises and examples; filter by type
 7. **Generate** — switch to **⚡ Generate**, pick type/difficulty/count, click Generate
 
 > AI features (Ask and Generate) require watsonx credentials in `.env.secrets`. Without them all other UI features work normally.
@@ -710,6 +780,93 @@ curl "http://localhost:8000/books/<BOOK_ID>/export?fmt=pdf"  -o all_questions.pd
 
 ---
 
+## Compile PDF (admin only)
+
+Compile a ready-to-download PDF directly from the original book pages — **no AI required**.
+Every question, figure, and equation is cropped from the actual printed page so nothing is lost in translation.
+
+### Modes
+
+| Mode | What it produces |
+|------|-----------------|
+| `questions` | Two-column question-card PDF grouped by chapter and category (Examples, Exercises, Short-Answer, Objective I/II, Worked Examples) |
+| `notes` | Full chapter notes — every page body rendered as an image strip, grouped by chapter with headings |
+| `both` | A single combined PDF: Part 1 Notes + Part 2 Questions |
+
+### Via the UI (recommended)
+
+1. Open a book's detail page (`/ui/books/{id}`)
+2. Click **📄 Compile PDF (Notes / Questions)** in the book hero
+3. Select chapters (all pre-checked), mode, and quality (DPI)
+4. Click **▶ Compile PDF** — a purple progress bar tracks the background job
+5. When done: **⬇ Download PDF** · **📤 Share with Students** · **📋 View all past compiled PDFs →**
+
+Every successful compile is **permanently recorded** — go to `/ui/compiled-pdfs` at any time to download or share past PDFs.
+
+### Share a compiled PDF with students
+
+After a compile finishes (or from the history page):
+1. Click **📤 Share with Students**
+2. Enter an optional label and optionally specific student usernames (blank = all students)
+3. Click **✓ Share now**
+
+Students see the shared PDF on the **Tasks** page (`/ui/tasks`) → **⬇ Download**
+
+### Via the API
+
+```bash
+# Start a compile job — questions only, all chapters
+curl -X POST http://localhost:8000/books/<BOOK_ID>/compile-pdf \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "questions", "dpi": 170, "chapter_ids": []}' | jq .
+# → { "job_id": "...", "message": "...", "compile_id": "..." }
+
+# Specific chapters only
+curl -X POST http://localhost:8000/books/<BOOK_ID>/compile-pdf \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "notes", "dpi": 130, "chapter_ids": ["<CH_ID_1>","<CH_ID_2>"]}' | jq .
+
+# Poll until done — message contains compile_id when successful
+curl http://localhost:8000/jobs/<JOB_ID> | jq '{status: .status, message: .message}'
+
+# Download the finished PDF (by job_id — direct after compile)
+curl -OJ http://localhost:8000/books/<BOOK_ID>/compile-pdf/<JOB_ID>/download
+
+# List all compile history for a book
+curl http://localhost:8000/books/<BOOK_ID>/compiled-pdfs | jq '.pdfs[] | {label, mode, page_count, chapters_desc}'
+
+# List ALL compile history across all books
+curl http://localhost:8000/compiled-pdfs | jq '.pdfs[] | {book_title, label, mode, created_at}'
+
+# Download any past compile by compile_id
+curl -OJ http://localhost:8000/compiled-pdfs/<COMPILE_ID>/download
+
+# Share a compiled PDF with all students
+curl -X POST http://localhost:8000/compiled-pdfs/<COMPILE_ID>/share \
+  -H "Content-Type: application/json" \
+  -d '{"label": "Physics Book 1 — Ch 3 Notes"}' | jq .
+
+# Share with specific students only
+curl -X POST http://localhost:8000/compiled-pdfs/<COMPILE_ID>/share \
+  -H "Content-Type: application/json" \
+  -d '{"label": "For Alice and Bob", "students": ["alice", "bob"]}' | jq .
+
+# List shared PDFs visible to the caller
+curl http://localhost:8000/shared-pdfs | jq '.pdfs[] | {label, mode, shared_by}'
+
+# Download a shared PDF (student or admin)
+curl -OJ http://localhost:8000/shared-pdfs/<SHARE_ID>/download
+
+# Unshare a compiled PDF
+curl -X DELETE http://localhost:8000/shared-pdfs/<SHARE_ID>
+```
+
+**`dpi` options:** `130` (draft, fast) · `170` (standard) · `220` (high quality, slow)
+
+> **Note:** Large books (400+ pages) in `both` mode can take 3–5 minutes. The job runs in the background; the UI polls every 2 seconds automatically.
+
+---
+
 ## Generate questions with AI
 
 > **Requires:** watsonx credentials configured (see [Configure watsonx AI](#configure-watsonx-ai-optional)).
@@ -854,24 +1011,49 @@ cd book-knowledge-service
 
 ## API reference
 
-| Method | Endpoint | Auth needed | Purpose |
-|--------|----------|-------------|---------|
-| POST | `/books` | — | Upload a PDF |
-| GET | `/books` | — | List all books |
-| GET | `/books/{book_id}` | — | Book metadata and status |
-| POST | `/books/{book_id}/index` | — | Start indexing job |
-| GET | `/books/{book_id}/chapters` | — | List chapters |
-| GET | `/books/{book_id}/pages/{n}` | — | Page text |
-| GET | `/books/{book_id}/pages/{n}/render` | — | Page as PNG |
-| GET | `/books/{book_id}/search?q=...` | — | Full-text search |
-| POST | `/books/{book_id}/chapters/{ch_id}/extract` | — | Start pattern extraction |
-| GET | `/books/{book_id}/chapters/{ch_id}/questions` | — | List extracted questions |
-| GET | `/jobs/{job_id}` | — | Job progress |
-| GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | — | Export questions |
-| GET | `/books/{book_id}/questions/generate?topic=...` | — | Pattern-based topic questions |
-| POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | watsonx | AI question generation |
-| POST | `/books/{book_id}/ask` | watsonx | AI Q&A (RAG) |
-| GET | `/viewer/{book_id}?page=n` | — | HTML page viewer |
+**Access:** *User* = any logged-in admin or student · *Admin* = admin only · *Public* = no login. Unauthenticated API calls get `401`, a student calling an admin endpoint gets `403`, and unauthenticated browser pages redirect to `/login`.
+
+| Method | Endpoint | Access | Purpose |
+|--------|----------|--------|---------|
+| POST | `/auth/login` | Public | Log in (`username`, `password`, `role`) — sets session cookie |
+| POST | `/auth/logout` | Public | End the session |
+| GET | `/auth/me` | User | Current user |
+| GET | `/auth/students` | Admin | List student names |
+| POST | `/auth/students` | Admin | Add a student (`username`, `password`) |
+| POST | `/books` | Admin | Upload a PDF |
+| DELETE | `/books/{book_id}` | Admin | Delete a book, its chapters/questions/index and files |
+| GET | `/books` | User | List all books |
+| GET | `/books/{book_id}` | User | Book metadata and status |
+| POST | `/books/{book_id}/index` | Admin | Start indexing job |
+| GET | `/books/{book_id}/chapters` | User | List chapters |
+| GET | `/books/{book_id}/pages/{n}` | User | Page text |
+| GET | `/books/{book_id}/pages/{n}/render` | User | Page as PNG |
+| GET | `/books/{book_id}/search?q=...` | User | Full-text search |
+| POST | `/books/{book_id}/chapters/{ch_id}/extract` | User | Start pattern extraction |
+| GET | `/books/{book_id}/chapters/{ch_id}/questions` | User | List extracted questions |
+| GET | `/jobs/{job_id}` | User | Job progress |
+| GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | User | Export questions |
+| POST | `/books/{book_id}/compile-pdf` | Admin | Start a compile-PDF job (notes/questions/both, chapter selection) |
+| GET | `/books/{book_id}/compile-pdf/{job_id}/download` | Admin | Download compiled PDF by job ID |
+| POST | `/books/{book_id}/compile-pdf/{job_id}/share` | Admin | Share a just-compiled PDF with students |
+| GET | `/books/{book_id}/compiled-pdfs` | Admin | List all past compiles for a book |
+| GET | `/compiled-pdfs` | Admin | List all past compiles across every book |
+| GET | `/compiled-pdfs/{compile_id}/download` | Admin | Download any past compiled PDF |
+| POST | `/compiled-pdfs/{compile_id}/share` | Admin | Share any past compiled PDF with students |
+| DELETE | `/shared-pdfs/{share_id}` | Admin | Unshare a compiled PDF |
+| GET | `/shared-pdfs` | User | List compiled PDFs shared with the caller |
+| GET | `/shared-pdfs/{share_id}/download` | User | Download a shared compiled PDF |
+| GET | `/books/{book_id}/questions/generate?topic=...` | Admin | Pattern-based topic questions |
+| POST | `/books/{book_id}/chapters/{ch_id}/generate-questions` | Admin (+ watsonx) | AI question generation |
+| POST | `/books/{book_id}/ask` | User (+ watsonx) | AI Q&A (RAG); omit `chapter_id` to search the whole book; response includes `sources` (chapter + page) |
+| GET | `/books/{book_id}/chapters/{ch_id}/shared` | User | List shared questions |
+| POST | `/books/{book_id}/chapters/{ch_id}/shared` | Admin | Share one or more questions |
+| PUT | `/shared/{share_id}` | Admin | Edit a shared question |
+| DELETE | `/shared/{share_id}` | Admin | Unshare |
+| GET | `/tasks` | User | Student: questions assigned to me. Admin: everything shared |
+| DELETE | `/tasks` | Admin | Clear tasks (all, or only `book_id` / `chapter_id`); returns `{"deleted": n}` |
+| GET | `/viewer/{book_id}?page=n` | User | HTML page viewer |
+| GET | `/login` | Public | Login page |
 
 Full interactive docs: **http://localhost:8000/docs**
 
@@ -884,28 +1066,42 @@ book-knowledge-service/
 ├── app/
 │   ├── main.py               FastAPI app, viewer route, startup/shutdown
 │   ├── config.py             Settings (env / .env file)
+│   ├── auth.py               Text-file credentials, sessions, role guards
 │   ├── models.py             Pydantic schemas
 │   ├── database.py           SQLite + FTS5 schema
 │   ├── storage.py            PDF storage, SHA-256 dedup
 │   ├── pdf_processor.py      PyMuPDF extraction, OCR fallback, PNG render
-│   ├── chapter_parser.py     TOC + regex chapter detection
+│   ├── chapter_parser.py     chapters from PDF bookmarks, else the printed Table of Contents, else regex
 │   ├── indexer.py            Page persistence, FTS5 rebuild
 │   ├── question_extractor.py Pattern-based question extraction
+│   ├── question_pdf.py       Crop questions from PDF pages into image cards
+│   ├── compiler.py           Compile notes+questions PDFs without AI
 │   ├── ai_client.py          IBM watsonx.ai wrapper (optional, graceful fallback)
 │   ├── jobs.py               Async job tracking
 │   ├── exporter.py           JSON / CSV / HTML / PDF export
 │   └── routers/
-│       ├── books.py          POST/GET /books
+│       ├── auth.py           /auth/login, /logout, /me, /students
+│       ├── books.py          POST/GET/DELETE /books
 │       ├── index.py          /index, /chapters, /pages, /search
 │       ├── questions.py      /questions, /extract, /generate (pattern)
 │       ├── ai.py             /ask, /generate-questions (watsonx)
+│       ├── shared.py         admin-shared questions: list / share / edit / unshare
+│       ├── compile.py        /compile-pdf, /compiled-pdfs, /shared-pdfs — compile history + sharing
 │       └── jobs_export.py    /jobs, /export
 ├── templates/
+│   ├── login.html            sign-in page
+│   ├── students.html         add/list students (admin)
+│   ├── compiled_pdfs.html    compiled PDFs history page (admin)
+│   ├── _userbar.html         user name + logout (included in headers)
 │   └── viewer.html           Jinja2 page viewer
 ├── tests/
 │   ├── conftest.py
-│   └── test_api.py
+│   ├── test_api.py
+│   ├── test_auth.py          login, roles, student mgmt, book delete
+│   ├── test_shared.py        share / edit / unshare, student view, page tabs per role
+│   └── test_question_pdf.py  question PDF crop pipeline unit tests
 ├── storage/                  git-ignored
+│   ├── auth/                 admins.txt, students.txt (plain-text credentials)
 │   ├── books/                uploaded PDFs
 │   ├── indexes/              render cache
 │   └── exports/              generated exports

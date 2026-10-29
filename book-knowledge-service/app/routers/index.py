@@ -7,29 +7,31 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 
+from ..auth import require_admin, require_user
 from ..config import settings
 from ..database import get_db
 from ..indexer import (
-    upsert_pages, upsert_chapters, rebuild_fts,
+    upsert_pages, upsert_chapters, rebuild_fts, delete_stale_chapters,
     update_book_status, full_text_search,
 )
 from ..chapter_parser import detect_chapters
 from ..jobs import create_job, run_job, update_job
 from ..models import ChapterList, ChapterRecord, PageRecord, JobRecord, JobStatus, JobType, SearchResult, SearchHit
-from ..pdf_processor import extract_pages, extract_pdf_meta, render_page_to_png, render_page_figures
+from ..pdf_processor import extract_pages, extract_pdf_meta, render_page_to_png, render_page_figures, run_pdf
 from ..storage import book_path, rendered_page_path
 
-router = APIRouter(tags=["indexing"])
+router = APIRouter(tags=["indexing"], dependencies=[Depends(require_user)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /books/{book_id}/index  – start indexing job
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.post("/books/{book_id}/index", response_model=JobRecord)
+@router.post("/books/{book_id}/index", response_model=JobRecord,
+             dependencies=[Depends(require_admin)])
 async def start_index(book_id: str):
     db = await get_db()
     async with db.execute("SELECT * FROM books WHERE book_id = ?", (book_id,)) as cur:
@@ -47,10 +49,11 @@ async def start_index(book_id: str):
         await update_book_status(book_id, "indexing")
         await update_job(job_id, progress=0.05, message="Extracting PDF metadata…")
 
-        meta = extract_pdf_meta(path)
+        meta = await run_pdf(extract_pdf_meta, path)
         await update_job(job_id, progress=0.1, message="Extracting page text…")
 
-        pages = extract_pages(
+        pages = await run_pdf(
+            extract_pages,
             path,
             ocr_enabled=settings.ocr_enabled,
             ocr_language=settings.ocr_language,
@@ -58,7 +61,7 @@ async def start_index(book_id: str):
         )
         await update_job(job_id, progress=0.6, message="Detecting chapters…")
 
-        chapters = detect_chapters(book_id, meta, pages)
+        chapters = await asyncio.to_thread(detect_chapters, book_id, meta, pages)
         await upsert_chapters(chapters)
 
         # Build page → chapter map
@@ -69,6 +72,7 @@ async def start_index(book_id: str):
 
         await update_job(job_id, progress=0.7, message="Saving pages…")
         await upsert_pages(book_id, pages, chapter_map)
+        await delete_stale_chapters(book_id, [ch.chapter_id for ch in chapters])
 
         await update_job(job_id, progress=0.9, message="Building FTS index…")
         await rebuild_fts(book_id)
@@ -150,7 +154,7 @@ async def render_page(book_id: str, page_number: int, dpi: int = Query(150, ge=7
     if not path.exists():
         raise HTTPException(status_code=404, detail="PDF file not found.")
     try:
-        png = render_page_to_png(path, page_number, dpi=dpi)
+        png = await run_pdf(render_page_to_png, path, page_number, dpi=dpi)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     cached.write_bytes(png)
@@ -173,14 +177,14 @@ async def render_page_figures_endpoint(
     if not path.exists():
         raise HTTPException(status_code=404, detail="PDF file not found.")
     try:
-        png = render_page_figures(path, page_number, dpi=dpi)
+        png = await run_pdf(render_page_figures, path, page_number, dpi=dpi)
         if png is None:
             # No figures on this page — fall back to full-page render
             cached = rendered_page_path(book_id, page_number)
             if cached.exists():
                 png = cached.read_bytes()
             else:
-                png = render_page_to_png(path, page_number, dpi=dpi)
+                png = await run_pdf(render_page_to_png, path, page_number, dpi=dpi)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return Response(png, media_type="image/png")

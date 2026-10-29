@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
+from ..auth import require_user
 from ..database import get_db
 from ..exporter import export
 from ..jobs import get_job
 from ..models import ExportFormat, ExportRequest, JobRecord, JobStatus, JobType, QuestionType
 
-router = APIRouter(tags=["jobs", "export"])
+router = APIRouter(tags=["jobs", "export"], dependencies=[Depends(require_user)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +114,9 @@ async def export_book(
         raise HTTPException(status_code=404, detail="No questions found matching the filters.")
 
     try:
-        content, media_type = export(fmt, questions, chapters, book_title, include_solutions)
+        # PDF/HTML building is pure-Python CPU work; keep it off the event loop.
+        content, media_type = await asyncio.to_thread(
+            export, fmt, questions, chapters, book_title, include_solutions)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

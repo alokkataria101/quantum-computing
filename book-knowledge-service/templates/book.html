@@ -47,6 +47,21 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
 .search-hit .snippet b{background:#fef9c3}
 .search-hit .ref{color:#6b7280;font-size:.78em;margin-top:2px}
 
+/* Ask AI */
+.ask-box{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px 18px;margin-bottom:20px}
+.ask-box h3{margin:0 0 4px;font-size:1em;font-weight:600}
+.ask-box p{margin:0 0 10px;font-size:.83em;color:#374151}
+.ask-box textarea{width:100%;border:1px solid #d1d5db;border-radius:6px;padding:9px 11px;font-size:.88em;line-height:1.5;font-family:inherit;resize:vertical;min-height:72px}
+.ask-box textarea:focus{outline:none;border-color:#4a9edd;box-shadow:0 0 0 2px rgba(74,158,221,.15)}
+.ask-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:.82em}
+.ask-controls select{border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:.95em;max-width:260px}
+#ask-status{font-size:.82em;color:#6b7280}
+.answer-card{background:#f0f7ff;border:1px solid #b8d0e8;border-radius:7px;padding:12px 14px;font-size:.88em;line-height:1.65;display:none;margin-top:12px}
+.answer-card.visible{display:block}
+#answer-text{white-space:pre-wrap}
+.answer-meta{font-size:.78em;color:#6b7280;margin-top:8px;border-top:1px solid #d1e8f5;padding-top:6px;line-height:1.8}
+.answer-meta a{color:#2563eb;text-decoration:none}.answer-meta a:hover{text-decoration:underline}
+
 /* Chapter list */
 .chapters-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .chapters-header h3{margin:0;font-size:1em;font-weight:600}
@@ -61,6 +76,29 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
 .ch-badge{font-size:.72em;padding:2px 8px;border-radius:10px}
 .ch-badge-q{background:#e0f2fe;color:#0369a1}
 .empty{text-align:center;padding:40px;color:#9ca3af;font-size:.9em}
+
+/* Compile PDF panel */
+.compile-panel{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px 24px;margin-bottom:24px}
+.compile-panel h3{margin:0 0 4px;font-size:1em;font-weight:600}
+.compile-panel p{margin:0 0 14px;font-size:.83em;color:#374151}
+.compile-opts{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-start}
+.compile-opts label{font-size:.85em;font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer}
+.compile-opts select{border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:.88em}
+.ch-checkboxes{border:1px solid #e5e7eb;border-radius:7px;padding:10px 14px;max-height:180px;overflow-y:auto;margin-bottom:14px;background:#fafafa}
+.ch-checkboxes label{display:flex;align-items:center;gap:8px;font-size:.83em;padding:3px 0;cursor:pointer}
+.ch-checkboxes label:hover{color:#2563eb}
+.compile-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#compile-status{font-size:.83em;color:#6b7280;margin-top:6px;min-height:18px}
+.compile-progress{height:5px;background:#e5e7eb;border-radius:4px;margin-top:6px;display:none;max-width:340px}
+.compile-progress-bar{height:5px;background:#7c5cd8;border-radius:4px;transition:width .4s}
+.btn-compile{background:#7c5cd8;color:#fff}.btn-compile:hover{background:#6344b8}
+.btn-download{background:#065f46;color:#fff;display:none}.btn-download:hover{background:#044033}
+.btn-share{background:#0369a1;color:#fff;display:none}.btn-share:hover{background:#024d7a}
+.share-opts{display:none;margin-top:10px;padding:12px 14px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:7px;font-size:.83em}
+.share-opts label{display:block;margin-bottom:6px;font-weight:500}
+.share-opts input{width:100%;border:1px solid #d1d5db;border-radius:5px;padding:6px 9px;font-size:.88em;font-family:inherit}
+.share-opts .hint{color:#6b7280;font-size:.78em;margin-top:3px}
+#share-status{font-size:.82em;color:#6b7280;margin-top:6px;min-height:16px}
 </style>
 </head>
 <body>
@@ -71,6 +109,7 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
     {{ book.title[:50] }}{% if book.title|length > 50 %}…{% endif %}
   </h1>
   <a class="btn btn-sm" href="/viewer/{{ book.book_id }}?page=1" style="background:#2c3e50;color:#e0e6f0;border-radius:5px;padding:5px 12px;font-size:.82em;text-decoration:none">📖 Open Reader</a>
+  {% include "_userbar.html" %}
 </header>
 
 <div class="container">
@@ -87,13 +126,99 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
       </div>
       <div class="book-actions">
         <a class="btn btn-primary" href="/viewer/{{ book.book_id }}?page=1">📖 Read Book</a>
+        {% if user.is_admin %}
         <button class="btn btn-secondary" id="btn-reindex" onclick="reindex()">🔄 Re-index</button>
-        <button class="btn btn-secondary" onclick="extractAll()">⚙ Extract All Questions</button>
+        <button class="btn btn-secondary" id="btn-extract-all" onclick="extractAll()">⚙ Extract All Questions</button>
+        {% endif %}
+        <select id="dl-fmt" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 8px;font-size:.85em">
+          <option value="pdf">PDF</option>
+          <option value="html">HTML</option>
+          <option value="csv">CSV</option>
+          <option value="json">JSON</option>
+        </select>
+        <button class="btn btn-secondary" onclick="downloadAll()">⬇ Download All Questions</button>
       </div>
+      {% if user.is_admin %}
+      <div style="margin-top:10px">
+        <button class="btn btn-secondary btn-sm" onclick="toggleCompilePanel()" id="btn-compile-toggle">📄 Compile PDF (Notes / Questions)</button>
+      </div>
+      {% endif %}
       <div id="index-status"></div>
       <div class="progress" id="progress-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
     </div>
   </div>
+
+  <!-- Compile PDF panel (admin only) -->
+  {% if user.is_admin %}
+  <div class="compile-panel" id="compile-panel" style="display:none">
+    <h3>📄 Compile PDF — Notes &amp; Questions</h3>
+    <p>Select chapters and a mode, then click Compile. The PDF is built from the original book pages — no AI, figures included. Large books may take a few minutes.</p>
+
+    <div class="compile-opts">
+      <label>Mode:
+        <select id="compile-mode">
+          <option value="questions">Questions only</option>
+          <option value="notes">Full notes (all pages)</option>
+          <option value="both">Both (combined PDF)</option>
+        </select>
+      </label>
+      <label>Quality:
+        <select id="compile-dpi">
+          <option value="130">Draft (130 dpi — fast)</option>
+          <option value="170" selected>Standard (170 dpi)</option>
+          <option value="220">High (220 dpi — slow)</option>
+        </select>
+      </label>
+    </div>
+
+    <div style="font-size:.83em;font-weight:500;margin-bottom:6px">
+      Chapters:
+      <button class="btn btn-sm btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="selectAllChapters(true)">All</button>
+      <button class="btn btn-sm btn-secondary" style="padding:2px 8px;font-size:.78em" onclick="selectAllChapters(false)">None</button>
+    </div>
+    <div class="ch-checkboxes" id="compile-ch-list">
+      {% for ch in chapters %}
+      {% if ch.number > 0 %}
+      <label>
+        <input type="checkbox" class="ch-check" value="{{ ch.chapter_id }}" checked>
+        <span>Ch {{ ch.number }} — {{ ch.title|replace('\r',' ')|replace('\n',' ')|truncate(60) }}
+          <span style="color:#9ca3af">(pp {{ ch.page_start }}–{{ ch.page_end }})</span>
+        </span>
+      </label>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="compile-actions">
+      <button class="btn btn-compile" id="btn-compile" onclick="startCompile()">▶ Compile PDF</button>
+      <button class="btn btn-download" id="btn-compile-download" onclick="downloadCompiled()">⬇ Download PDF</button>
+      <button class="btn btn-share" id="btn-share-toggle" onclick="toggleShareOpts()">📤 Share with Students</button>
+    </div>
+    <div id="compile-status"></div>
+    <div class="compile-progress" id="compile-progress-wrap">
+      <div class="compile-progress-bar" id="compile-progress-bar" style="width:0%"></div>
+    </div>
+    <div style="margin-top:8px;font-size:.8em">
+      <a href="/ui/compiled-pdfs" style="color:#7c5cd8">📋 View all past compiled PDFs →</a>
+    </div>
+
+    <!-- Share options (shown after compile succeeds) -->
+    <div class="share-opts" id="share-opts">
+      <label>Label shown to students (optional)
+        <input type="text" id="share-label" placeholder="e.g. Physics Book 1 — Chapter 3 Notes"/>
+      </label>
+      <label style="margin-top:8px">Share with specific students (optional)
+        <input type="text" id="share-students" placeholder="Leave blank for ALL students, or: alice, bob, charlie"/>
+        <span class="hint">Comma-separated usernames. Leave blank to share with every student.</span>
+      </label>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="sharePdf()">✓ Share now</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleShareOpts()">Cancel</button>
+      </div>
+      <div id="share-status"></div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Search -->
   <div class="search-bar">
@@ -101,6 +226,37 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
     <button onclick="doSearch()">🔍 Search</button>
   </div>
   <div id="search-results"></div>
+
+  <!-- Ask AI -->
+  <div class="ask-box">
+    <h3>💬 Ask AI</h3>
+    <p>Ask anything about this book — answered from the book text, with the chapter and page it came from.</p>
+    <textarea id="ask-input" placeholder="e.g. What is Bernoulli's principle? Explain Pascal's law."></textarea>
+    <div class="ask-controls">
+      <label>Search in:
+        <select id="ask-scope">
+          <option value="" selected>Whole book</option>
+          {% for ch in chapters %}
+          <option value="{{ ch.chapter_id }}">Ch {{ ch.number }} — {{ ch.title|replace('\r', ' ')|replace('\n', ' ')|truncate(50) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Pages:
+        <select id="max-pages">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="8">8</option>
+          <option value="12">12</option>
+        </select>
+      </label>
+      <button class="btn btn-primary btn-sm" id="ask-btn" onclick="askAI()">Ask</button>
+      <span id="ask-status"></span>
+    </div>
+    <div class="answer-card" id="answer-card">
+      <div id="answer-text"></div>
+      <div class="answer-meta" id="answer-meta"></div>
+    </div>
+  </div>
 
   <!-- Chapters -->
   <div class="chapters-header">
@@ -124,13 +280,139 @@ header h1{margin:0;font-size:1.15em;font-weight:600;flex:1}
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty">No chapters found. Index the book first.</div>
+      <div class="empty">No chapters found.{% if user.is_admin %} Index the book first.{% endif %}</div>
     {% endif %}
   </div>
 </div>
 
 <script>
 const BOOK_ID = "{{ book.book_id }}";
+
+// ── Compile PDF ───────────────────────────────────────────────────────────────
+let _compileJobId = null;
+let _compilePollTimer = null;
+
+function toggleCompilePanel() {
+  const p = document.getElementById('compile-panel');
+  const btn = document.getElementById('btn-compile-toggle');
+  const visible = p.style.display !== 'none';
+  p.style.display = visible ? 'none' : 'block';
+  btn.textContent = visible ? '📄 Compile PDF (Notes / Questions)' : '▲ Hide Compile Panel';
+}
+
+function selectAllChapters(val) {
+  document.querySelectorAll('.ch-check').forEach(cb => cb.checked = val);
+}
+
+async function startCompile() {
+  const btn      = document.getElementById('btn-compile');
+  const dlBtn    = document.getElementById('btn-compile-download');
+  const status   = document.getElementById('compile-status');
+  const bar      = document.getElementById('compile-progress-bar');
+  const wrap     = document.getElementById('compile-progress-wrap');
+  const mode     = document.getElementById('compile-mode').value;
+  const dpi      = parseInt(document.getElementById('compile-dpi').value);
+  const checked  = [...document.querySelectorAll('.ch-check:checked')].map(c => c.value);
+
+  dlBtn.style.display = 'none';
+  _compileJobId = null;
+  btn.disabled = true;
+  wrap.style.display = 'block';
+  bar.style.width = '5%';
+  status.textContent = 'Submitting…';
+
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/compile-pdf`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mode, dpi, chapter_ids: checked}),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    _compileJobId = data.job_id;
+    status.textContent = 'Compiling… (this can take a few minutes for large books)';
+    bar.style.width = '10%';
+    _pollCompile(bar, wrap, status, btn, dlBtn);
+  } catch (e) {
+    status.textContent = '✗ ' + e.message;
+    btn.disabled = false;
+    wrap.style.display = 'none';
+  }
+}
+
+function _pollCompile(bar, wrap, status, btn, dlBtn) {
+  if (_compilePollTimer) clearInterval(_compilePollTimer);
+  _compilePollTimer = setInterval(async () => {
+    if (!_compileJobId) return;
+    try {
+      const r = await fetch(`/jobs/${_compileJobId}`);
+      const j = await r.json();
+      const pct = Math.min(95, Math.max(10, (j.progress || 0) * 100));
+      bar.style.width = pct + '%';
+      if (j.message) status.textContent = j.message;
+
+      if (j.status === 'done') {
+        clearInterval(_compilePollTimer);
+        bar.style.width = '100%';
+        status.textContent = '✓ ' + (j.message || 'PDF compiled successfully.');
+        btn.disabled = false;
+        dlBtn.style.display = 'inline-block';
+        document.getElementById('btn-share-toggle').style.display = 'inline-block';
+      } else if (j.status === 'failed' || j.status === 'cancelled') {
+        clearInterval(_compilePollTimer);
+        status.textContent = '✗ ' + (j.error || j.status);
+        btn.disabled = false;
+        wrap.style.display = 'none';
+      }
+    } catch (e) {
+      /* network hiccup — keep polling */
+    }
+  }, 2000);
+}
+function downloadCompiled() {
+  if (!_compileJobId) return;
+  window.location.href = `/books/${BOOK_ID}/compile-pdf/${_compileJobId}/download`;
+}
+
+function toggleShareOpts() {
+  const panel = document.getElementById('share-opts');
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+  document.getElementById('share-status').textContent = '';
+}
+
+async function sharePdf() {
+  if (!_compileJobId) return;
+  const label    = document.getElementById('share-label').value.trim();
+  const rawStudents = document.getElementById('share-students').value.trim();
+  const students = rawStudents ? rawStudents.split(',').map(s => s.trim()).filter(Boolean) : null;
+  const status   = document.getElementById('share-status');
+  status.textContent = 'Sharing…';
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/compile-pdf/${_compileJobId}/share`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({label, students}),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    const d = await res.json();
+    const who = d.assigned_to && d.assigned_to.length
+      ? `shared with ${d.assigned_to.join(', ')}`
+      : 'shared with all students';
+    status.textContent = `✓ PDF ${who}. Students can see it on the Tasks page.`;
+    document.getElementById('share-opts').style.display = 'none';
+  } catch (e) {
+    status.textContent = '✗ ' + e.message;
+  }
+}
+
+
 
 async function reindex() {
   const btn = document.getElementById('btn-reindex');
@@ -165,18 +447,92 @@ async function pollJob(jobId, bar, wrap, status, btn) {
   }, 1500);
 }
 
+// Extract every chapter, a few at a time, and wait for each job to finish so the
+// final count is real. (Extraction is local pattern matching - no AI calls - so
+// running several at once is safe.)
 async function extractAll() {
-  const chapters = document.querySelectorAll('.chapter-card');
+  const btn = document.getElementById('btn-extract-all');
   const status = document.getElementById('index-status');
+  btn.disabled = true;
   status.textContent = 'Extracting questions from all chapters…';
-  // fire-and-forget all extract jobs
-  const res = await fetch(`/books/${BOOK_ID}/chapters`);
-  const data = await res.json();
-  for (const ch of data.chapters) {
-    await fetch(`/books/${BOOK_ID}/chapters/${ch.chapter_id}/extract`, {method:'POST'});
-    await new Promise(r => setTimeout(r, 300));
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/chapters`);
+    if (!res.ok) throw new Error('Could not list chapters (index the book first).');
+    const chapters = (await res.json()).chapters;
+
+    let done = 0, failed = 0, found = 0;
+    const waitFor = async (jobId) => {
+      for (let i = 0; i < 120; i++) {                    // up to ~60 s per chapter
+        const j = await (await fetch(`/jobs/${jobId}`)).json();
+        if (j.status === 'done') return j;
+        if (j.status === 'failed' || j.status === 'cancelled') throw new Error(j.error || j.status);
+        await new Promise(r => setTimeout(r, 500));
+      }
+      throw new Error('timed out');
+    };
+    const queue = chapters.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const ch = queue.shift();
+        try {
+          const r = await fetch(`/books/${BOOK_ID}/chapters/${ch.chapter_id}/extract`, {method:'POST'});
+          if (!r.ok) throw new Error(r.status);
+          const j = await waitFor((await r.json()).job_id);
+          found += parseInt((j.message.match(/\d+/) || [0])[0]);
+        } catch (e) { failed++; }
+        done++;
+        status.textContent = `Extracting… ${done}/${chapters.length} chapters · ${found} questions`;
+      }
+    };
+    await Promise.all([1, 2, 3, 4].map(worker));
+    status.textContent = `✓ Done: ${found} questions from ${chapters.length - failed}/${chapters.length} chapters` +
+                         (failed ? ` (${failed} failed)` : '') + '. You can download them now.';
+  } catch (e) {
+    status.textContent = '✗ ' + e.message;
   }
-  status.textContent = '✓ Extraction started for all chapters. Refresh in a moment.';
+  btn.disabled = false;
+}
+
+function downloadAll() {
+  const fmt = document.getElementById('dl-fmt').value;
+  // Server sends Content-Disposition: attachment, so this just starts the download.
+  location.href = `/books/${BOOK_ID}/export?fmt=${fmt}`;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function askAI() {
+  const q = document.getElementById('ask-input').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('ask-btn');
+  const status = document.getElementById('ask-status');
+  const card = document.getElementById('answer-card');
+  btn.disabled = true; status.textContent = 'Thinking…'; card.classList.remove('visible');
+  try {
+    const res = await fetch(`/books/${BOOK_ID}/ask`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question:q,
+                            chapter_id: document.getElementById('ask-scope').value || null,
+                            max_pages: parseInt(document.getElementById('max-pages').value)})
+    });
+    const d = await res.json();
+    if (!res.ok) { status.textContent = '✗ ' + (d.detail || 'Error'); }
+    else {
+      document.getElementById('answer-text').textContent = d.answer;
+      const srcs = d.sources || [];
+      document.getElementById('answer-meta').innerHTML = srcs.length
+        ? 'Sources: ' + srcs.map(s => {
+            const ch = (s.chapter_number != null ? 'Ch ' + esc(s.chapter_number) + ' — ' : '') + esc((s.chapter_title || '').slice(0, 60));
+            return `<a href="/viewer/${BOOK_ID}?page=${s.page_number}">${ch} · p.${s.page_number}</a>`
+                 + (s.chapter_id ? ` (<a href="/ui/books/${BOOK_ID}/chapters/${esc(s.chapter_id)}">chapter</a>)` : '');
+          }).join('<br>')
+        : `Sources: pages ${d.source_pages && d.source_pages.length ? d.source_pages.join(', ') : '—'}`;
+      card.classList.add('visible'); status.textContent = '';
+    }
+  } catch (e) { status.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
 }
 
 async function doSearch() {

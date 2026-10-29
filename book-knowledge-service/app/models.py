@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
@@ -29,6 +29,13 @@ class JobStatus(str, Enum):
 class JobType(str, Enum):
     index      = "index"
     extract    = "extract"
+    compile_pdf = "compile_pdf"
+
+
+class CompileMode(str, Enum):
+    questions = "questions"
+    notes     = "notes"
+    both      = "both"
 
 
 class QuestionType(str, Enum):
@@ -89,7 +96,7 @@ class ChapterRecord(BaseModel):
     page_start: int
     page_end: int
     confidence: float = 1.0           # 0.0–1.0 detection confidence
-    source: str = "toc"               # "toc" | "inferred"
+    source: str = "toc"               # "toc" | "contents" | "inferred"
 
     model_config = {"from_attributes": True}
 
@@ -203,14 +210,22 @@ class ExportRequest(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=5, description="Question to ask about the book")
-    chapter_id: Optional[str] = Field(None, description="Restrict search to this chapter")
+    chapter_id: Optional[str] = Field(None, description="Restrict search to this chapter (omit to search the whole book)")
     max_pages: int = Field(5, ge=1, le=20, description="Max pages to include as context")
+
+
+class AskSource(BaseModel):
+    page_number: int
+    chapter_id: Optional[str] = None
+    chapter_number: Optional[int] = None
+    chapter_title: Optional[str] = None
 
 
 class AskResponse(BaseModel):
     question: str
     answer: str
     source_pages: list[int]
+    sources: list[AskSource] = []          # where the answer came from (best match first)
     chapter_title: Optional[str] = None
     ai_enabled: bool
 
@@ -248,3 +263,91 @@ class GenerateQuestionsResponse(BaseModel):
     total: int
     ai_enabled: bool
     note: Optional[str] = None         # shown when AI is disabled
+
+
+# ── Shared (admin-curated) questions ──────────────────────────────────────────
+
+class SharedQuestionIn(BaseModel):
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
+    type: str = Field("question", max_length=32)
+    options: Optional[list[Annotated[str, StringConstraints(max_length=1000)]]] = Field(None, max_length=10)
+    answer: Optional[str] = Field(None, max_length=5000)
+    hint: Optional[str] = Field(None, max_length=2000)
+    page_start: Optional[int] = Field(None, ge=1)
+
+
+class SharedQuestionsCreate(BaseModel):
+    questions: list[SharedQuestionIn] = Field(..., min_length=1, max_length=100)
+    # Students who get the questions. Omitted/null = every student.
+    students: Optional[list[str]] = Field(None, min_length=1, max_length=1000)
+
+
+class SharedQuestion(SharedQuestionIn):
+    share_id: str
+    book_id: str
+    chapter_id: str
+    shared_by: str
+    shared_at: datetime
+    updated_at: datetime
+    assigned_to: list[str] = []            # empty = every student
+
+
+class SharedQuestionList(BaseModel):
+    questions: list[SharedQuestion]
+    total: int
+
+
+class AssignedTask(SharedQuestion):
+    book_title: Optional[str] = None
+    chapter_number: Optional[int] = None
+    chapter_title: Optional[str] = None
+
+
+class AssignedTaskList(BaseModel):
+    tasks: list[AssignedTask]
+    total: int
+
+
+# ── Shared compiled PDFs ──────────────────────────────────────────────────────
+
+class CompiledPdf(BaseModel):
+    compile_id: str
+    book_id: str
+    job_id: str
+    mode: str
+    label: str
+    chapters_desc: str
+    page_count: int
+    created_by: str
+    created_at: datetime
+    book_title: Optional[str] = None
+    is_shared: bool = False          # True if at least one shared_pdfs row points here
+
+
+class CompiledPdfList(BaseModel):
+    pdfs: list[CompiledPdf]
+    total: int
+
+
+class SharePdfRequest(BaseModel):
+    label: str = Field("", max_length=200, description="Optional display label for students.")
+    students: Optional[list[str]] = Field(
+        None, description="Specific student usernames. Omit or null = all students."
+    )
+
+
+class SharedPdf(BaseModel):
+    share_id: str
+    book_id: str
+    job_id: str
+    mode: str
+    label: str
+    shared_by: str
+    shared_at: datetime
+    assigned_to: list[str] = []   # empty = every student
+    book_title: Optional[str] = None
+
+
+class SharedPdfList(BaseModel):
+    pdfs: list[SharedPdf]
+    total: int

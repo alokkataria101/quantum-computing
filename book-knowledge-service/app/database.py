@@ -127,4 +127,67 @@ async def _create_schema(db: aiosqlite.Connection) -> None:
         updated_at  TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_jobs_book ON jobs(book_id);
+
+    -- ── Shared questions (admin-curated, visible to students) ─────────────────
+    -- chapter_id is deliberately NOT a foreign key: re-indexing replaces chapter
+    -- rows, which must not wipe questions an admin has edited and published.
+    -- Deleting the book still removes them (book_id cascade).
+    CREATE TABLE IF NOT EXISTS shared_questions (
+        share_id      TEXT PRIMARY KEY,
+        book_id       TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
+        chapter_id    TEXT NOT NULL,
+        question_type TEXT NOT NULL DEFAULT 'question',
+        question      TEXT NOT NULL,
+        options       TEXT,
+        answer        TEXT,
+        hint          TEXT,
+        page_start    INTEGER,
+        shared_by     TEXT NOT NULL,
+        shared_at     TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_shared_chapter ON shared_questions(book_id, chapter_id);
+
+    -- Who a shared question is assigned to. No rows for a share_id = every student.
+    CREATE TABLE IF NOT EXISTS shared_question_assignees (
+        share_id  TEXT NOT NULL REFERENCES shared_questions(share_id) ON DELETE CASCADE,
+        student   TEXT NOT NULL,
+        PRIMARY KEY (share_id, student)
+    );
+    CREATE INDEX IF NOT EXISTS idx_assignee_student ON shared_question_assignees(student);
+
+    -- ── Compiled PDFs history (every successful compile is recorded here) ───────
+    -- Survives page refresh; admin can browse, download, or share any past compile.
+    CREATE TABLE IF NOT EXISTS compiled_pdfs (
+        compile_id      TEXT PRIMARY KEY,
+        book_id         TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
+        job_id          TEXT NOT NULL,
+        mode            TEXT NOT NULL DEFAULT 'questions',
+        label           TEXT NOT NULL DEFAULT '',
+        chapters_desc   TEXT NOT NULL DEFAULT '',   -- human-readable "Ch 1, 2, 3" or "All chapters"
+        page_count      INTEGER NOT NULL DEFAULT 0,
+        created_by      TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_compiled_pdfs_book ON compiled_pdfs(book_id);
+
+    -- ── Shared compiled PDFs (admin shares a compiled PDF with students) ────────
+    CREATE TABLE IF NOT EXISTS shared_pdfs (
+        share_id    TEXT PRIMARY KEY,
+        book_id     TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
+        job_id      TEXT NOT NULL,
+        mode        TEXT NOT NULL DEFAULT 'questions',
+        label       TEXT NOT NULL DEFAULT '',
+        shared_by   TEXT NOT NULL,
+        shared_at   TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_shared_pdfs_book ON shared_pdfs(book_id);
+
+    -- Who a shared PDF is assigned to. No rows = every student.
+    CREATE TABLE IF NOT EXISTS shared_pdf_assignees (
+        share_id  TEXT NOT NULL REFERENCES shared_pdfs(share_id) ON DELETE CASCADE,
+        student   TEXT NOT NULL,
+        PRIMARY KEY (share_id, student)
+    );
+    CREATE INDEX IF NOT EXISTS idx_shared_pdf_assignee ON shared_pdf_assignees(student);
     """)

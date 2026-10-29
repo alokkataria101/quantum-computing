@@ -13,3 +13,5 @@ storage/exports/
 books/*.pdf
 secrets/*.secrets
 secrets/*.env
+# Plain-text credential files (admins.txt, students.txt) — never commit
+storage/auth/
