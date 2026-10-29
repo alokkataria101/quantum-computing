@@ -97,12 +97,12 @@ async def start_compile(book_id: str, req: CompileRequest):
     async def _run():
         from ..compiler import compile_pdf
 
+        loop = asyncio.get_event_loop()
+
         def _progress(msg: str):
-            asyncio.get_event_loop().call_soon_threadsafe(
-                lambda: asyncio.ensure_future(
-                    update_job(job_id, message=msg)
-                )
-            )
+            # Called from a worker thread — schedule the coroutine on the
+            # event loop that owns this async task.
+            asyncio.run_coroutine_threadsafe(update_job(job_id, message=msg), loop)
 
         try:
             await asyncio.to_thread(
