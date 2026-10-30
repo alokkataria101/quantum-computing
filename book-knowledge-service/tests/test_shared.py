@@ -87,6 +87,42 @@ async def test_share_several_at_once_keeps_order(client):
     assert [q["question"] for q in listed] == [f"Question {i}" for i in range(5)]
 
 
+async def test_download_pdf_is_one_share_batch(client, monkeypatch):
+    from app.routers import shared as shared_router
+    seen = []
+    real = shared_router.shared_questions_to_pdf
+    monkeypatch.setattr(shared_router, "shared_questions_to_pdf",
+                        lambda title, qs: (seen.append([q["question"] for q in qs]), real(title, qs))[1])
+    book_id, ch = await _make_chapter(client)
+    first = (await client.post(_url(book_id, ch), json={"questions": [
+        {"question": "A1"}, {"question": "A2"}]})).json()["questions"]
+    second = (await client.post(_url(book_id, ch), json={"questions": [{"question": "B1"}]})).json()["questions"]
+    await _switch_to_student(client)
+
+    # Any question of a batch gives that whole batch, and only that batch.
+    r = await client.get(f"/shared/{first[1]['share_id']}/batch-download")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF")
+    assert "attachment" in r.headers["content-disposition"]
+    r = await client.get(f"/shared/{second[0]['share_id']}/batch-download")
+    assert r.status_code == 200
+    assert seen == [["A1", "A2"], ["B1"]]
+
+
+async def test_batch_download_respects_assignment(client):
+    book_id, ch = await _make_chapter(client)
+    auth_module.add_student("other", "otherpass")
+    q = (await client.post(_url(book_id, ch), json={"questions": [MCQ], "students": ["other"]})).json()["questions"][0]
+    assert (await client.get(f"/shared/{q['share_id']}/batch-download")).status_code == 200  # admin
+    await _switch_to_student(client)  # "pupil" was not assigned
+    assert (await client.get(f"/shared/{q['share_id']}/batch-download")).status_code == 404
+
+
+async def test_batch_download_unknown_share_404(client):
+    assert (await client.get("/shared/nope/batch-download")).status_code == 404
+
+
 async def test_shared_is_scoped_to_its_chapter(client):
     book_id, ch1 = await _make_chapter(client)
     db = await get_db()

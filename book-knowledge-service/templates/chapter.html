@@ -576,19 +576,31 @@ function renderShared() {
     list.innerHTML = `<div class="no-q">Nothing shared for this chapter yet.${IS_ADMIN ? '<br><small>Generate questions, then click 📢 Share.</small>' : ''}</div>`;
     return;
   }
+  // One batch = one Share action (same shared_at). Each gets its own header + PDF link.
+  let batchAt = null, n = 0;
   list.innerHTML = sharedQs.map((q, i) => {
+    let header = '';
+    if (q.shared_at !== batchAt) {
+      batchAt = q.shared_at; n = 0;
+      const size = sharedQs.filter(x => x.shared_at === batchAt).length;
+      header = `<div class="sub-batch" style="display:flex;align-items:center;gap:10px;margin:14px 0 6px;font-size:.82em;color:#6b7280">
+        <span>Shared ${new Date(batchAt).toLocaleString()} · ${size} question${size !== 1 ? 's' : ''}</span>
+        <a href="/shared/${encodeURIComponent(q.share_id)}/batch-download" style="color:#059669;font-weight:600;text-decoration:none">⬇ Download PDF</a>
+      </div>`;
+    }
+    n++;
     if (i === sharedEditIdx) {
-      return `<div class="gen-question">${editFormHTML('s', q, `saveSharedEdit(${i})`, 'cancelSharedEdit()')}</div>`;
+      return header + `<div class="gen-question">${editFormHTML('s', q, `saveSharedEdit(${i})`, 'cancelSharedEdit()')}</div>`;
     }
     const actions = IS_ADMIN ? `
       <div class="q-actions">
         <button class="btn btn-secondary btn-sm" onclick="editShared(${i})">✎ Edit</button>
         <button class="btn btn-danger btn-sm" onclick="unshare(${i})">Unshare</button>
       </div>` : '';
-    return `
+    return header + `
     <div class="gen-question">
       <div class="gq-type">${escHtml(q.type||'question')}</div>
-      <div class="gq-text"><strong>Q${i+1}.</strong> ${fmtPhysics(q.question)}</div>
+      <div class="gq-text"><strong>Q${n}.</strong> ${fmtPhysics(q.question)}</div>
       ${q.options ? `<div class="gq-options">${q.options.map(o=>'<div>'+fmtPhysics(o)+'</div>').join('')}</div>` : ''}
       ${q.answer ? `
         <span class="gq-toggle" onclick="toggleGen(this)">▶ Show answer</span>

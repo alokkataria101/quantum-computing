@@ -161,6 +161,32 @@ def to_pdf(
     return buf.getvalue()
 
 
+def shared_questions_to_pdf(title: str, questions: list[dict]) -> bytes:
+    """PDF of admin-shared (AI-generated) questions: dicts with question, type,
+    options, answer, hint."""
+    if not REPORTLAB_AVAILABLE:
+        raise RuntimeError("reportlab is not installed. Install it with: pip install reportlab")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, title=title)
+    styles = getSampleStyleSheet()
+    esc = lambda s: _html.escape(s or "", quote=False).replace("\n", "<br/>")
+    story = [Paragraph(esc(title), styles["Title"]), Spacer(1, 12)]
+    for i, q in enumerate(questions, 1):
+        story.append(Paragraph(
+            f"<b>Q{i}. [{esc(q.get('type') or 'question')}]</b> {esc(q['question'])}",
+            styles["Normal"]))
+        for opt in q.get("options") or []:
+            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;{esc(opt)}", styles["Normal"]))
+        if q.get("answer"):
+            story.append(Paragraph(f"<i>Answer:</i> {esc(q['answer'])}", styles["Normal"]))
+        if q.get("hint"):
+            story.append(Paragraph(f"<i>Hint:</i> {esc(q['hint'])}", styles["Normal"]))
+        story.append(Spacer(1, 10))
+    doc.build(story)
+    return buf.getvalue()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Dispatcher
 # ─────────────────────────────────────────────────────────────────────────────

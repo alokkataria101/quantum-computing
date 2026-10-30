@@ -26,6 +26,8 @@ header h1{margin:0;font-size:1.15em;font-weight:600}
 .btn-del:hover{background:#fef2f2}
 .bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .row-actions{display:flex;justify-content:space-between;align-items:center}
+.batch-head{display:flex;align-items:center;gap:12px;margin:14px 0 2px;font-size:.78em;color:#6b7280}
+.dl-link{color:#059669;font-weight:600;text-decoration:none}.dl-link:hover{text-decoration:underline}
 /* Shared PDFs */
 .pdf-section{margin-top:28px}
 .pdf-section h2{font-size:1em;font-weight:600;margin:0 0 12px;color:#1f2328}
@@ -149,8 +151,22 @@ async function load() {
     const f = items[0];
     const chTitle = (f.chapter_title || '').replace(/\s+/g, ' ');
     const heading = `${esc(f.book_title || 'Book')} › ${f.chapter_number != null ? 'Ch.' + f.chapter_number + ' ' : ''}${esc(chTitle)}`;
-    // Show each question in the order it was shared within the chapter.
-    const cards = items.slice().reverse().map((t, i) => `
+    // Show questions in the order they were shared; one header + PDF link per share batch
+    // (a batch = one Share action: same sharer and shared_at).
+    let batchKey = null, n = 0;
+    const cards = items.slice().reverse().map(t => {
+      let header = '';
+      const key = t.shared_by + '|' + t.shared_at;
+      if (key !== batchKey) {
+        batchKey = key; n = 0;
+        const size = items.filter(x => x.shared_by + '|' + x.shared_at === key).length;
+        header = `<div class="batch-head">
+          <span>Shared ${new Date(t.shared_at).toLocaleString()} · ${size} question${size !== 1 ? 's' : ''}</span>
+          <a class="dl-link" href="/shared/${encodeURIComponent(t.share_id)}/batch-download">⬇ Download PDF</a>
+        </div>`;
+      }
+      const i = n++;
+      return header + `
       <div class="task">
         <div class="t-type">${esc(t.type || 'question')}</div>
         <div class="t-text"><strong>Q${i + 1}.</strong> ${esc(t.question)}</div>
@@ -163,7 +179,8 @@ async function load() {
           </div>
           ${IS_ADMIN ? `<button class="btn-del" onclick="removeTask('${esc(t.share_id)}')">Remove</button>` : ''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     return `<div class="group">
       <h2><a href="/ui/books/${f.book_id}/chapters/${f.chapter_id}">${heading}</a></h2>
       <div class="sub">${items.length} question${items.length !== 1 ? 's' : ''} · <a href="/ui/books/${f.book_id}/chapters/${f.chapter_id}" style="color:#4a9edd">Open chapter</a>

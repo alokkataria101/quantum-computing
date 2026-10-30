@@ -19,15 +19,19 @@ only to the listed students.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 
 from .. import auth
 from ..auth import User, require_admin, require_user
 from ..database import get_db
+from ..exporter import shared_questions_to_pdf
+from .compile import _safe_filename
 from ..models import (
     AssignedTask, AssignedTaskList, SharedQuestion, SharedQuestionIn,
     SharedQuestionList, SharedQuestionsCreate,
@@ -95,6 +99,54 @@ async def list_shared(book_id: str, chapter_id: str, user: User = Depends(requir
     assigned = await _assignees(db, [r["share_id"] for r in rows])
     qs = [_row_to_shared(r, assigned) for r in rows]
     return SharedQuestionList(questions=qs, total=len(qs))
+
+
+@router.get("/shared/{share_id}/batch-download")
+async def download_shared_batch(share_id: str, user: User = Depends(require_user)):
+    """PDF of the share batch this question belongs to. A batch is everything
+    shared in one Share action: same chapter, sharer and `shared_at`. Students
+    only get the questions they can see."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT s.book_id, s.chapter_id, s.shared_by, s.shared_at, "
+        "b.title AS book_title, c.number, c.title "
+        "FROM shared_questions s "
+        "LEFT JOIN books b ON b.book_id = s.book_id "
+        "LEFT JOIN chapters c ON c.chapter_id = s.chapter_id AND c.book_id = s.book_id "
+        "WHERE s.share_id = ?", (share_id,),
+    ) as cur:
+        head = await cur.fetchone()
+    if not head:
+        raise HTTPException(status_code=404, detail="Shared question not found.")
+
+    sql = ("SELECT s.* FROM shared_questions s WHERE s.book_id = ? AND s.chapter_id = ? "
+           "AND s.shared_by = ? AND s.shared_at = ?")
+    params: list = [head["book_id"], head["chapter_id"], head["shared_by"], head["shared_at"]]
+    if not user.is_admin:
+        sql += f" AND {_VISIBLE_TO_STUDENT}"
+        params.append(user.username)
+    sql += " ORDER BY s.rowid"
+    async with db.execute(sql, params) as cur:
+        rows = await cur.fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Shared question not found.")
+
+    qs = [dict(type=r["question_type"], question=r["question"],
+               options=json.loads(r["options"]) if r["options"] else None,
+               answer=r["answer"], hint=r["hint"]) for r in rows]
+    chapter = " ".join((head["title"] or "").split())
+    when = datetime.fromisoformat(head["shared_at"]).strftime("%d %b %Y")
+    title = f"{head['book_title'] or 'Book'} - Ch.{head['number']} {chapter} - Questions ({when})"
+    try:
+        content = await asyncio.to_thread(shared_questions_to_pdf, title, qs)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    filename = _safe_filename(title)
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post(
