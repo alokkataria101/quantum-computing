@@ -44,6 +44,7 @@ Any number of users can be logged in at the same time, each with their own sessi
 | Setting | Default | Meaning |
 |---|---|---|
 | `AI_MAX_CONCURRENCY` | `4` | Max simultaneous watsonx calls **per worker**; extra requests wait their turn instead of hitting 429 |
+| `AI_RATE_LIMIT_RETRIES` | `4` | Times a 429 is retried (2s, 4s, 8s, 16s back-off) before the user sees "rate limit reached". A `consumption_limit_reached` (quota used up) is never retried |
 
 Notes: PyMuPDF work is serialised within one worker (it is single-threaded), so extra workers are what give parallel PDF rendering. Only run the PDF indexing job from one place at a time; the SQLite database is shared by all workers.
 
