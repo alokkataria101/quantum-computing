@@ -29,6 +29,7 @@ async def init_db() -> None:
     await _DB.execute("PRAGMA journal_mode=WAL")
     await _DB.execute("PRAGMA foreign_keys=ON")
     await _create_schema(_DB)
+    await _migrate(_DB)
     await _DB.commit()
     logger.info("Database initialised at %s", settings.database_path)
 
@@ -38,6 +39,14 @@ async def close_db() -> None:
     if _DB:
         await _DB.close()
         _DB = None
+
+
+async def _migrate(db: aiosqlite.Connection) -> None:
+    """Bring a database created by an older version up to date."""
+    async with db.execute("PRAGMA table_info(chapters)") as cur:
+        cols = {r["name"] for r in await cur.fetchall()}
+    if "printed_number" not in cols:
+        await db.execute("ALTER TABLE chapters ADD COLUMN printed_number INTEGER")
 
 
 async def _create_schema(db: aiosqlite.Connection) -> None:
@@ -61,7 +70,8 @@ async def _create_schema(db: aiosqlite.Connection) -> None:
     CREATE TABLE IF NOT EXISTS chapters (
         chapter_id    TEXT PRIMARY KEY,
         book_id       TEXT NOT NULL REFERENCES books(book_id) ON DELETE CASCADE,
-        number        INTEGER NOT NULL,
+        number        INTEGER NOT NULL,   -- 0 = front matter, then 1, 2, 3... in book order
+        printed_number INTEGER,           -- number printed in the book (e.g. 23 in volume 2), if known
         title         TEXT NOT NULL,
         page_start    INTEGER NOT NULL,
         page_end      INTEGER NOT NULL,

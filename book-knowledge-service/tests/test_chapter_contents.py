@@ -42,8 +42,24 @@ def test_detect_chapters_prefers_contents_over_text_guessing_and_adds_front_matt
     meta = PDFMeta(title="", author="", total_pages=12, toc=[])
     ch = detect_chapters("b", meta, _book())
     assert ch[0].number == 0 and ch[0].page_end == 3          # front matter before chapter 23
-    assert [c.number for c in ch[1:5]] == [23, 24, 25, 26]
     assert all(c.source != "inferred" for c in ch[1:])
+
+
+def test_chapters_are_numbered_0_1_2_even_when_the_book_starts_at_23():
+    """Volume 2 of a series prints chapters 23, 24, ... - the app numbers them 1, 2, ..."""
+    meta = PDFMeta(title="", author="", total_pages=12, toc=[])
+    ch = detect_chapters("b", meta, _book())
+    assert [c.number for c in ch] == list(range(len(ch)))                  # 0, 1, 2, 3, ...
+    assert [c.printed_number for c in ch[1:5]] == [23, 24, 25, 26]          # kept for reference
+    assert ch[0].printed_number is None                                     # front matter
+    assert [c.chapter_id for c in ch[1:3]] == ["b_ch023", "b_ch024"]        # ids unchanged
+
+
+def test_text_inferred_chapters_are_also_numbered_from_1():
+    pages = [ExtractedPage(i + 1, t, False, False, False) for i, t in enumerate([
+        "cover", "Chapter 7: Waves and Sound\nbody", "more", "Chapter 8: Light and Optics\nbody", "more"])]
+    ch = detect_chapters("b", PDFMeta(title="", author="", total_pages=5, toc=[]), pages)
+    assert [(c.number, c.printed_number) for c in ch] == [(0, None), (1, 7), (2, 8)]
 
 
 def test_no_contents_page_returns_nothing():

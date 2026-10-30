@@ -91,7 +91,8 @@ class BookList(BaseModel):
 class ChapterRecord(BaseModel):
     chapter_id: str
     book_id: str
-    number: int                       # 0 = front matter
+    number: int                       # 0 = front matter, then 1, 2, 3... in book order
+    printed_number: Optional[int] = None   # number printed in the book (e.g. 23 in volume 2)
     title: str
     page_start: int
     page_end: int

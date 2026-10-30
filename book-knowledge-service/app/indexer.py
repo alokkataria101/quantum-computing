@@ -51,15 +51,15 @@ async def upsert_chapters(chapters: list[ChapterRecord]) -> None:
     db = await get_db()
     rows = [
         (
-            ch.chapter_id, ch.book_id, ch.number, ch.title,
+            ch.chapter_id, ch.book_id, ch.number, ch.printed_number, ch.title,
             ch.page_start, ch.page_end, ch.confidence, ch.source,
         )
         for ch in chapters
     ]
     await db.executemany(
         """INSERT OR REPLACE INTO chapters
-           (chapter_id, book_id, number, title, page_start, page_end, confidence, source)
-           VALUES (?,?,?,?,?,?,?,?)""",
+           (chapter_id, book_id, number, printed_number, title, page_start, page_end, confidence, source)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
         rows,
     )
     await db.commit()
