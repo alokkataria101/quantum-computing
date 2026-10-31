@@ -278,7 +278,7 @@ function renderQuestionList() {
         <span class="q-marks-badge">[${marks}M]</span>
       </div>
       <div class="q-text">${esc(qText)}</div>
-      ${q.image_url ? `<img src="${esc(q.image_url)}" style="max-width:100%;max-height:180px;margin-top:5px;border-radius:4px;border:1px solid #e5e7eb" loading="lazy">` : ''}`;
+      ${q.image_url && (q.question_text.length <= 80 || q.question_text.startsWith('[Figure')) ? `<img src="${esc(q.image_url)}" style="max-width:100%;max-height:180px;margin-top:5px;border-radius:4px;border:1px solid #e5e7eb" loading="lazy">` : ''}`;
 
     if (q.options && q.options.length) {
       html += `<div style="margin-top:5px;font-size:.81em;color:#374151">${q.options.map((o,i)=>`(${String.fromCharCode(65+i)}) ${esc(o)}`).join(' &nbsp; ')}</div>`;
@@ -518,7 +518,7 @@ function buildPreviewHTML(withAnswers, forDownload) {
     if (withAnswers && item.include_answer && (q.answer_text || q.solution_text)) {
       ansHtml = `<div class="pq-ans"><strong>Answer:</strong> ${esc(q.answer_text||q.solution_text||'')}</div>`;
     }
-    const imgHtml = q.image_url
+    const imgHtml = q.image_url && (q.question_text.length <= 80 || q.question_text.startsWith('[Figure'))
       ? `<img src="${esc(q.image_url)}" style="max-width:100%;max-height:200px;margin-top:6px;display:block" onerror="this.style.display='none'">`
       : '';
     questionsHtml += `<div class="pq">
