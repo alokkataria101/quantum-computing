@@ -604,12 +604,11 @@ function toggleExamPicker() {
 }
 
 async function loadExamPickerQuestions() {
-  const list  = document.getElementById('ep-q-list');
+  const list   = document.getElementById('ep-q-list');
   const status = document.getElementById('ep-status');
   list.innerHTML = '<div style="text-align:center;padding:20px;color:#9ca3af;font-size:.85em">Loading…</div>';
   status.textContent = '';
 
-  // Chapter IDs: use the currently checked chapter checkboxes
   const checkedChapters = [...document.querySelectorAll('.ch-check:checked')].map(c => c.value);
   const qtype = document.getElementById('ep-type-filter').value;
 
@@ -618,23 +617,55 @@ async function loadExamPickerQuestions() {
     return;
   }
 
-  const body = { chapter_ids: checkedChapters, limit: 300, offset: 0 };
-  if (qtype) body.question_types = [qtype];
+  // First pass: see what's already extracted
+  const searchBody = { chapter_ids: checkedChapters, limit: 300, offset: 0 };
+  if (qtype) searchBody.question_types = [qtype];
 
-  const res = await fetch('/api/v1/questions/search', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    list.innerHTML = '<div style="text-align:center;padding:20px;color:#9ca3af;font-size:.85em">No questions found. Run ⚙ Extract All Questions first, then come back here.</div>';
-    return;
+  let data = await (await fetch('/api/v1/questions/search', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(searchBody)
+  })).json();
+
+  // If no questions yet, auto-extract them now
+  if (!data.questions || !data.questions.length) {
+    list.innerHTML = '<div style="text-align:center;padding:16px;color:#374151;font-size:.85em">⚙ Extracting questions from selected chapters — please wait…</div>';
+    status.textContent = '';
+
+    let done = 0, found = 0;
+    const waitForJob = async (jobId) => {
+      for (let i = 0; i < 120; i++) {
+        const j = await (await fetch(`/jobs/${jobId}`)).json();
+        if (j.status === 'done') return parseInt((j.message.match(/\d+/) || [0])[0]);
+        if (j.status === 'failed' || j.status === 'cancelled') return 0;
+        await new Promise(r => setTimeout(r, 600));
+      }
+      return 0;
+    };
+
+    for (const chId of checkedChapters) {
+      try {
+        const r = await fetch(`/books/${BOOK_ID}/chapters/${chId}/extract`, { method: 'POST' });
+        if (r.ok) {
+          const j = await r.json();
+          const count = await waitForJob(j.job_id);
+          found += count;
+        }
+      } catch(e) { /* skip failed chapter */ }
+      done++;
+      list.innerHTML = `<div style="text-align:center;padding:16px;color:#374151;font-size:.85em">⚙ Extracting… ${done}/${checkedChapters.length} chapters · ${found} questions found so far</div>`;
+    }
+
+    // Re-fetch after extraction
+    data = await (await fetch('/api/v1/questions/search', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(searchBody)
+    })).json();
   }
-  const data = await res.json();
+
   _epQuestions = data.questions || [];
   document.getElementById('ep-select-all').checked = false;
   epUpdateCount();
 
   if (!_epQuestions.length) {
-    list.innerHTML = '<div style="text-align:center;padding:20px;color:#9ca3af;font-size:.85em">No questions extracted yet for these chapters.<br>Click ⚙ Extract All Questions then come back.</div>';
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:#9ca3af;font-size:.85em">No questions could be extracted from the selected chapters.<br>The chapters may not contain recognisable question patterns.</div>';
     return;
   }
 
