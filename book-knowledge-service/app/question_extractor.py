@@ -58,6 +58,13 @@ _NUMBERED_ITEM = re.compile(
     re.S | re.I,
 )
 
+# ── Figure / diagram reference — question text is mostly/entirely visual ──────
+_FIGURE_REF_RE = re.compile(
+    r"\b(?:Fig(?:ure)?s?\.?\s*[\d\.]+|diagram|the\s+figure|the\s+graph|the\s+circuit|the\s+table"
+    r"|shown\s+(?:in|above|below)|refer\s+to\s+(?:the\s+)?(?:figure|diagram))\b",
+    re.I,
+)
+
 # ── Solution / Answer markers ─────────────────────────────────────────────────
 _SOLUTION_HEADER = re.compile(r"\bSolution\s*:", re.I)
 _ANSWER_HEADER   = re.compile(r"\b(?:Answer|Ans)\.?\s*:", re.I)
@@ -366,11 +373,19 @@ def _extract_section(
         num = m.group(1)
         item_raw = m.group(2).strip()
         item_text = _strip_markers(item_raw)
-        if len(item_text) < 10:
+        # Allow short items only when they reference a figure/diagram
+        if len(item_text) < 10 and not _FIGURE_REF_RE.search(item_text):
             continue
         q_text, sol, ans = _split_solution(item_text)
-        if not q_text or len(q_text) < 5:
+        if not q_text:
             continue
+        # If the extracted stem is too short but references a figure, keep it
+        # with a descriptive placeholder so the DB NOT NULL constraint is met
+        # and the question appears in the picker with its image crop.
+        if len(q_text) < 5:
+            if not _FIGURE_REF_RE.search(item_text):
+                continue
+            q_text = f"[Figure/diagram question {num} — see image crop]"
 
         # Page number = most recent marker before this match in the full combined string
         abs_pos = section_start + m.start()

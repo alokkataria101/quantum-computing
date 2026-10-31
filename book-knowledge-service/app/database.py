@@ -492,6 +492,11 @@ async def search_questions_db(
         conditions.append("q.review_status = ?")
         params.append(filters.review_status.value)
 
+    if filters.has_diagrams is True:
+        conditions.append("q.image_url IS NOT NULL AND q.image_url != ''")
+    elif filters.has_diagrams is False:
+        conditions.append("(q.image_url IS NULL OR q.image_url = '')")
+
     where_clause = " AND ".join(conditions)
 
     count_sql = f"""
