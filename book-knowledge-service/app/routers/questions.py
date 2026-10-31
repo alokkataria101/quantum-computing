@@ -1,21 +1,42 @@
-"""app/routers/questions.py – question extraction and generation endpoints."""
+"""app/routers/questions.py – question extraction, repository search, and review studio endpoints."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import random as _random
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import require_admin, require_user
-from ..database import get_db
+from ..database import (
+    get_db,
+    get_question_by_id_db,
+    row_to_question_record,
+    search_questions_db,
+    update_question_db,
+)
 from ..jobs import create_job, update_job
 from ..models import (
-    ChapterRecord, GenerateResult, JobRecord, JobStatus, JobType,
-    QuestionList, QuestionRecord, QuestionType,
+    ChapterRecord,
+    DifficultyLevel,
+    GenerateResult,
+    JobRecord,
+    JobStatus,
+    JobType,
+    QuestionList,
+    QuestionPatchRequest,
+    QuestionRecord,
+    QuestionSearchQuery,
+    QuestionSearchResponse,
+    QuestionType,
+    ReviewStatus,
 )
 from ..question_extractor import extract_questions_from_chapter
+
+_row_to_q = row_to_question_record
 
 router = APIRouter(tags=["questions"], dependencies=[Depends(require_user)])
 
@@ -64,7 +85,7 @@ async def get_questions(
         params,
     ) as cur:
         rows = await cur.fetchall()
-    questions = [_row_to_q(r) for r in rows]
+    questions = [row_to_question_record(r) for r in rows]
     return QuestionList(questions=questions, total=len(questions), chapter_id=chapter_id)
 
 
@@ -113,19 +134,42 @@ async def start_extraction(book_id: str, chapter_id: str):
         await db.execute(
             "DELETE FROM questions WHERE chapter_id = ?", (chapter_id,)
         )
-        # Insert new
+        # Insert new with 3-layer representation fields
         if questions:
             await db.executemany(
                 """INSERT INTO questions
                    (question_id, book_id, chapter_id, chapter_number, question_type,
                     question_number, question_text, solution_text, answer_text,
-                    page_start, page_end, confidence, extraction_method)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    hint, options, sub_parts, page_start, page_end, confidence,
+                    extraction_method, bounding_box, image_url, image_path,
+                    difficulty, marks, content_hash, review_status)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 [
-                    (q.question_id, q.book_id, q.chapter_id, q.chapter_number,
-                     q.question_type.value, q.question_number, q.question_text,
-                     q.solution_text, q.answer_text, q.page_start, q.page_end,
-                     q.confidence, q.extraction_method)
+                    (
+                        q.question_id,
+                        q.book_id,
+                        q.chapter_id,
+                        q.chapter_number,
+                        q.question_type.value,
+                        q.question_number,
+                        q.question_text,
+                        q.solution_text,
+                        q.answer_text,
+                        q.hint,
+                        json.dumps(q.options) if q.options else None,
+                        json.dumps(q.sub_parts) if q.sub_parts else None,
+                        q.page_start,
+                        q.page_end,
+                        q.confidence,
+                        q.extraction_method,
+                        json.dumps(q.bounding_box.model_dump()) if q.bounding_box else None,
+                        q.image_url,
+                        q.image_path,
+                        q.difficulty.value,
+                        q.marks,
+                        q.content_hash,
+                        q.review_status.value,
+                    )
                     for q in questions
                 ],
             )
@@ -139,23 +183,7 @@ async def start_extraction(book_id: str, chapter_id: str):
         job_id=job_id, job_type=JobType.extract,
         book_id=book_id, chapter_id=chapter_id,
         status=JobStatus.pending, progress=0.0,
-        created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
-    )
-
-
-def _row_to_q(row) -> QuestionRecord:
-    d = dict(row)
-    return QuestionRecord(
-        question_id=d["question_id"], book_id=d["book_id"],
-        chapter_id=d["chapter_id"], chapter_number=d["chapter_number"],
-        question_type=QuestionType(d["question_type"]),
-        question_number=d.get("question_number"),
-        question_text=d["question_text"],
-        solution_text=d.get("solution_text"),
-        answer_text=d.get("answer_text"),
-        page_start=d["page_start"], page_end=d["page_end"],
-        confidence=d["confidence"],
-        extraction_method=d.get("extraction_method", "pattern"),
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
     )
 
 
@@ -220,7 +248,7 @@ async def generate_questions(
             ),
         )
 
-    questions = [_row_to_q(r) for r in rows]
+    questions = [row_to_question_record(r) for r in rows]
 
     # 3. Shuffle or keep in order, then slice to count
     if randomize:
@@ -234,3 +262,107 @@ async def generate_questions(
         question_type=question_type,
         random=randomize,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/v1/questions/search  &  GET /api/v1/questions/search
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post(
+    "/api/v1/questions/search",
+    response_model=QuestionSearchResponse,
+    summary="Multi-facet Question Bank Search",
+    description="Search questions by text, subject, class/grade, chapter, question types, difficulty, and marks.",
+)
+async def search_questions_post(
+    query_body: QuestionSearchQuery,
+):
+    db = await get_db()
+    questions, total = await search_questions_db(db, query_body)
+    return QuestionSearchResponse(
+        questions=questions,
+        total=total,
+        page=(query_body.offset // query_body.limit) + 1,
+        page_size=query_body.limit,
+    )
+
+
+@router.get(
+    "/api/v1/questions/search",
+    response_model=QuestionSearchResponse,
+    summary="Multi-facet Question Bank Search (GET)",
+)
+async def search_questions_get(
+    query: Optional[str] = Query(None, description="Search query string"),
+    subject: Optional[str] = Query(None, description="Filter by subject"),
+    class_grade: Optional[int] = Query(None, description="Filter by class/grade"),
+    difficulty: Optional[DifficultyLevel] = Query(None, description="Filter by difficulty"),
+    question_type: Optional[QuestionType] = Query(None, description="Filter by question type"),
+    min_marks: Optional[int] = Query(None, description="Minimum marks"),
+    max_marks: Optional[int] = Query(None, description="Maximum marks"),
+    review_status: Optional[ReviewStatus] = Query(None, description="Filter by review status"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    db = await get_db()
+    q_types = [question_type] if question_type else None
+    diffs = [difficulty] if difficulty else None
+
+    filters = QuestionSearchQuery(
+        query=query,
+        subject=subject,
+        class_grade=class_grade,
+        question_types=q_types,
+        difficulty=diffs,
+        min_marks=min_marks,
+        max_marks=max_marks,
+        review_status=review_status,
+        limit=limit,
+        offset=offset,
+    )
+    questions, total = await search_questions_db(db, filters)
+    return QuestionSearchResponse(
+        questions=questions,
+        total=total,
+        page=(offset // limit) + 1,
+        page_size=limit,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/v1/questions/{question_id}
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get(
+    "/api/v1/questions/{question_id}",
+    response_model=QuestionRecord,
+    summary="Get 3-Layer Question Object",
+)
+async def get_question_by_id(question_id: str):
+    db = await get_db()
+    q = await get_question_by_id_db(db, question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return q
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATCH /api/v1/questions/{question_id}  (Question Review Studio)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.patch(
+    "/api/v1/questions/{question_id}",
+    response_model=QuestionRecord,
+    dependencies=[Depends(require_admin)],
+    summary="Update/Review Question in Review Studio",
+    description="Edit question text, options, difficulty, marks, topic, or approve/reject extraction.",
+)
+async def patch_question(
+    question_id: str,
+    patch_data: QuestionPatchRequest,
+):
+    db = await get_db()
+    updated = await update_question_db(db, question_id, patch_data)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return updated

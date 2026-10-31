@@ -16,7 +16,7 @@ Hands-on quantum computing and quantum physics experiments in Python: Schröding
 | [`quantum-stock-qft/`](quantum-stock-qft/) | **Quantum Fourier Analysis of Financial Time Series** — Yahoo Finance data, Qiskit QFT, classical FFT baseline, Streamlit dashboard (7 tabs), HTML report | [`quantum-stock-qft/README.md`](quantum-stock-qft/README.md) |
 | [`quantum-function-qft/`](quantum-function-qft/) | **Quantum Fourier Analysis of f(x)** — safe expression parser, 5-sample gallery, DFT vs QFT comparison, experiments tab, Streamlit dashboard | [`quantum-function-qft/README.md`](quantum-function-qft/README.md) |
 | [`quantum-portfolio-intelligence/`](quantum-portfolio-intelligence/) | **Quantum Portfolio Intelligence Platform (QPIP)** — 9-page Streamlit dashboard, NSE portfolio analysis, Add/Buy/Hold/Reduce/Avoid signals, Portfolio Doctor, What-if Simulator, Opportunity Scanner, IBM watsonx AI, Qiskit Aer | [`quantum-portfolio-intelligence/README.md`](quantum-portfolio-intelligence/README.md) |
-| [`book-knowledge-service/`](book-knowledge-service/) | **PDF Textbook Microservice** — upload PDFs, full-text index (FTS5), page viewer, chapter detection, question extraction, bulk export, topic-based question generation | [`book-knowledge-service/README.md`](book-knowledge-service/README.md) |
+| [`book-knowledge-service/`](book-knowledge-service/) | **PDF Textbook Microservice & Universal Question Bank** — upload PDFs, full-text search (FTS5), page viewer, chapter detection, 3-layer question extraction (Layer A image crops, Layer B clean text/options, Layer C metadata), Split-Screen Review Studio, Question Bank grid, and Interactive Assignment Builder | [`book-knowledge-service/README.md`](book-knowledge-service/README.md) |
 | [`misc/`](misc/) | Notes and documents (untracked PDF files) | – |
 
 ---
@@ -59,7 +59,7 @@ pip install -r requirements.txt
 .venv/bin/streamlit run app.py --server.port 8503   # → http://localhost:8503
 ```
 
-### book-knowledge-service — PDF Textbook Microservice
+### book-knowledge-service — PDF Textbook Microservice & Universal Question Bank
 
 ```bash
 cd book-knowledge-service

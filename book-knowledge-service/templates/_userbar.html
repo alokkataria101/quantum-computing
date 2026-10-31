@@ -2,6 +2,9 @@
   <a href="#" id="back-link" onclick="event.preventDefault();goBack()" style="display:none;color:#e0e6f0;text-decoration:none;border:1px solid #3d5166;border-radius:5px;padding:3px 10px">‹ Back</a>
   <span>{{ user.username }} · {{ user.role }}</span>
   <a href="/ui" style="color:#8fa0b0;text-decoration:none">Library</a>
+  <a href="/ui/question-bank" style="color:#8fa0b0;text-decoration:none">Question Bank</a>
+  <a href="/ui/review" style="color:#8fa0b0;text-decoration:none">Review Studio</a>
+  <a href="/ui/assignments" style="color:#8fa0b0;text-decoration:none">Assignments</a>
   <a href="/ui/tasks" style="color:#8fa0b0;text-decoration:none">{% if user.is_admin %}Tasks{% else %}My Tasks{% endif %}</a>
   {% if user.is_admin %}<a href="/ui/students" style="color:#8fa0b0;text-decoration:none">Students</a>{% endif %}
   <a href="#" onclick="event.preventDefault();logout()" style="color:#8fa0b0;text-decoration:none">Logout</a>
