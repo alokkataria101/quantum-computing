@@ -617,16 +617,29 @@ async function loadExamPickerQuestions() {
     return;
   }
 
-  // First pass: see what's already extracted
-  const searchBody = { chapter_ids: checkedChapters, limit: 300, offset: 0 };
+  // First pass: see what's already extracted (paginate, max 100 per call)
+  const searchBody = { chapter_ids: checkedChapters, limit: 100, offset: 0 };
   if (qtype) searchBody.question_types = [qtype];
 
-  let data = await (await fetch('/api/v1/questions/search', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(searchBody)
-  })).json();
+  const fetchAll = async () => {
+    let all = [], off = 0;
+    while (true) {
+      const page = await (await fetch('/api/v1/questions/search', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({...searchBody, offset: off})
+      })).json();
+      all = all.concat(page.questions || []);
+      if (!page.questions || page.questions.length < 100) break;
+      off += 100;
+    }
+    return all;
+  };
+
+  let existing = await fetchAll();
+  let data = { questions: existing };
 
   // If no questions yet, auto-extract them now
-  if (!data.questions || !data.questions.length) {
+  if (!existing.length) {
     list.innerHTML = '<div style="text-align:center;padding:16px;color:#374151;font-size:.85em">⚙ Extracting questions from selected chapters — please wait…</div>';
     status.textContent = '';
 
@@ -654,10 +667,8 @@ async function loadExamPickerQuestions() {
       list.innerHTML = `<div style="text-align:center;padding:16px;color:#374151;font-size:.85em">⚙ Extracting… ${done}/${checkedChapters.length} chapters · ${found} questions found so far</div>`;
     }
 
-    // Re-fetch after extraction
-    data = await (await fetch('/api/v1/questions/search', {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(searchBody)
-    })).json();
+    // Re-fetch after extraction using same paginated helper
+    data = { questions: await fetchAll() };
   }
 
   _epQuestions = data.questions || [];
