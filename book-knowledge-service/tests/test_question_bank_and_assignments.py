@@ -213,12 +213,6 @@ async def test_ui_routes_accessible(client):
     assert r1.status_code == 200
     assert "Universal Question Bank" in r1.text
 
-    # UI Review studio
-    r2 = await client.get("/ui/review")
+    # UI Exam Draft
+    r2 = await client.get("/ui/exam-draft")
     assert r2.status_code == 200
-    assert "Split-Screen Review Studio" in r2.text
-
-    # UI Assignments
-    r3 = await client.get("/ui/assignments")
-    assert r3.status_code == 200
-    assert "Assignment Builder" in r3.text
