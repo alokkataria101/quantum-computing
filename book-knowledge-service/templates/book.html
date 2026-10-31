@@ -698,6 +698,7 @@ async function loadExamPickerQuestions() {
           ${chapLabel ? `<span style="font-size:.7em;color:#9ca3af">${chapLabel}</span>` : ''}
         </div>
         <div style="font-size:.84em;line-height:1.5">${esc(q.question_text)}</div>
+        ${q.image_url ? `<img src="${esc(q.image_url)}" style="max-width:100%;max-height:160px;margin-top:4px;border-radius:3px;border:1px solid #e5e7eb" loading="lazy">` : ''}
         ${optHtml}${ansHtml}
       </div>
     </div>`;
@@ -867,6 +868,7 @@ async function loadModalQuestions() {
           <span style="font-size:.74em;color:#059669;font-weight:600">${q.marks}M</span>
         </div>
         <div style="font-size:.85em;line-height:1.5">${escM(q.question_text)}</div>
+        ${q.image_url ? `<img src="${escM(q.image_url)}" style="max-width:100%;max-height:160px;margin-top:4px;border-radius:3px;border:1px solid #e5e7eb" loading="lazy">` : ''}
         ${optHtml}${ansHtml}
       </div>
     </div>`;

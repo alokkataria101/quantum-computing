@@ -17,3 +17,4 @@ __pycache__/
 *.env
 # misc PDFs — never commit
 misc/*.pdf
+.bob/
