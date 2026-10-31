@@ -87,7 +87,7 @@ nav a:hover,nav a.active{background:rgba(255,255,255,.1);color:#fff}
   <div class="top-bar">
     <div>
       <h2>Universal Question Bank</h2>
-      <p style="font-size:0.85em;color:#64748b;">Search, filter, and select verified questions across all uploaded books</p>
+      <p style="font-size:0.85em;color:#64748b;">Search, filter, and select verified questions across all uploaded books &nbsp;·&nbsp; <span id="q-total-label" style="font-weight:600;color:#1a3a5c"></span></p>
     </div>
     <div class="actions">
       <div class="selected-counter">
@@ -159,20 +159,34 @@ async function loadQuestions() {
   const diff = document.getElementById('filter-difficulty').value;
   const review = document.getElementById('filter-review').value;
 
-  let url = `/api/v1/questions/search?limit=100`;
-  if (query) url += `&query=${encodeURIComponent(query)}`;
-  if (qType) url += `&question_type=${qType}`;
-  if (diff) url += `&difficulty=${diff}`;
-  if (review) url += `&review_status=${review}`;
-
   const container = document.getElementById('questions-container');
-  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#64748b;">Loading questions...</div>';
+  const totalLabel = document.getElementById('q-total-label');
+  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#64748b;">Loading questions…</div>';
+  totalLabel.textContent = '';
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to load questions');
-    const data = await res.json();
-    renderQuestions(data.questions || []);
+    // Paginate through all results (API max 100 per page)
+    let allQuestions = [];
+    let offset = 0;
+    const PAGE = 100;
+    while (true) {
+      let url = `/api/v1/questions/search?limit=${PAGE}&offset=${offset}`;
+      if (query) url += `&query=${encodeURIComponent(query)}`;
+      if (qType) url += `&question_type=${qType}`;
+      if (diff) url += `&difficulty=${diff}`;
+      if (review) url += `&review_status=${review}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to load questions');
+      const data = await res.json();
+      const page = data.questions || [];
+      allQuestions = allQuestions.concat(page);
+      if (page.length < PAGE) break;   // last page
+      offset += PAGE;
+    }
+    totalLabel.textContent = allQuestions.length
+      ? `${allQuestions.length} question${allQuestions.length !== 1 ? 's' : ''}`
+      : '';
+    renderQuestions(allQuestions);
   } catch (err) {
     container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ef4444;">Error: ${err.message}</div>`;
   }
