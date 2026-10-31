@@ -18,7 +18,7 @@ from . import auth as auth_module
 from .auth import User, page_admin, page_user
 from .config import settings
 from .database import init_db, close_db, get_db
-from .routers import books, index, questions, jobs_export, ai, shared, compile as compile_router, assignments
+from .routers import books, index, questions, jobs_export, ai, shared, compile as compile_router, assignments, exam_drafts as exam_drafts_router
 from .routers import auth as auth_router
 from .storage import crops_dir
 
@@ -160,6 +160,7 @@ app.include_router(books.router)
 app.include_router(index.router)
 app.include_router(questions.router)
 app.include_router(assignments.router)
+app.include_router(exam_drafts_router.router)
 app.include_router(jobs_export.router)
 app.include_router(ai.router)
 app.include_router(shared.router)
@@ -417,77 +418,37 @@ async def ui_question_bank(
     )
 
 
-# ── UI — Split-Screen Review Studio ──────────────────────────────────────────
 
-@app.get("/ui/review", response_class=HTMLResponse, include_in_schema=False)
-async def ui_review_studio(
+# ── UI — Exam Draft (Exam Paper Builder) ─────────────────────────────────────
+
+@app.get("/ui/exam-draft", response_class=HTMLResponse, include_in_schema=False)
+async def ui_exam_draft(
     request: Request,
-    book_id: Optional[str] = None,
-    status: Optional[str] = "pending",
-    question_type: Optional[str] = None,
+    draft_id: Optional[str] = None,
     user: User = Depends(page_user),
 ):
-    from .routers.books import list_books
-    from .database import search_questions_db, get_db
-    from .models import QuestionSearchQuery, QuestionType, ReviewStatus
+    import json as _json
+    from .database import get_exam_draft_db, get_or_create_active_draft_db, list_exam_drafts_db
 
     db = await get_db()
-    all_books = await list_books()
-    status_filter = None if status == "all" else (status or "pending")
+    drafts, _ = await list_exam_drafts_db(db, limit=20)
 
-    filter_query = QuestionSearchQuery(
-        book_ids=[book_id] if book_id else None,
-        question_types=[QuestionType(question_type)] if question_type else None,
-        review_statuses=[ReviewStatus(status_filter)] if status_filter else None,
-        limit=100,
-        offset=0,
-    )
-    questions, total = await search_questions_db(db, filter_query)
+    active_draft = None
+    if draft_id:
+        active_draft = await get_exam_draft_db(db, draft_id)
+    elif user.is_admin:
+        active_draft = await get_or_create_active_draft_db(db, user.username)
+
+    active_draft_json = _json.dumps(active_draft.model_dump(mode="json")) if active_draft else "null"
 
     return templates.TemplateResponse(
         request=request,
-        name="review_studio.html",
+        name="exam_draft.html",
         context={
             "user": user,
-            "books": all_books,
-            "questions": questions,
-            "total": total,
-            "selected_book_id": book_id or "",
-            "status": status or "pending",
-            "question_type": question_type or "",
-        },
-    )
-
-
-# ── UI — Assignment Builder ──────────────────────────────────────────────────
-
-@app.get("/ui/assignments", response_class=HTMLResponse, include_in_schema=False)
-async def ui_assignments(
-    request: Request,
-    id: Optional[str] = None,
-    user: User = Depends(page_user),
-):
-    from .routers.books import list_books
-    from .database import get_assignment_db, list_assignments_db, get_db
-
-    db = await get_db()
-    all_books = await list_books()
-    all_assignments, total = await list_assignments_db(db, limit=50)
-
-    active_assignment = None
-    if id:
-        active_assignment = await get_assignment_db(db, id)
-    elif all_assignments:
-        active_assignment = await get_assignment_db(db, all_assignments[0].id)
-
-    return templates.TemplateResponse(
-        request=request,
-        name="assignments.html",
-        context={
-            "user": user,
-            "books": all_books,
-            "assignments": all_assignments,
-            "active_assignment": active_assignment,
+            "drafts": drafts,
+            "active_draft": active_draft,
+            "active_draft_json": active_draft_json,
         },
     )
 

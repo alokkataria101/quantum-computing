@@ -76,8 +76,7 @@ nav a:hover,nav a.active{background:rgba(255,255,255,.1);color:#fff}
   <nav>
     <a href="/ui">Library</a>
     <a href="/ui/question-bank" class="active">Question Bank</a>
-    {% if user.is_admin %}<a href="/ui/review">Review Studio</a>{% endif %}
-    <a href="/ui/assignments">Assignments</a>
+    {% if user.is_admin %}<a href="/ui/exam-draft">📝 Exam Draft</a>{% endif %}
     <a href="/ui/tasks">{% if user.is_admin %}Tasks{% else %}My Tasks{% endif %}</a>
     {% if user.is_admin %}<a href="/ui/students">Students</a>{% endif %}
   </nav>
@@ -88,15 +87,15 @@ nav a:hover,nav a.active{background:rgba(255,255,255,.1);color:#fff}
   <div class="top-bar">
     <div>
       <h2>Universal Question Bank</h2>
-      <p style="font-size:0.85em;color:#64748b;">Search, filter, and select verified questions across all uploaded books</p>
+      <p style="font-size:0.85em;color:#64748b;">Search, filter, and select verified questions across all uploaded books &nbsp;·&nbsp; <span id="q-total-label" style="font-weight:600;color:#1a3a5c"></span></p>
     </div>
     <div class="actions">
       <div class="selected-counter">
         <span id="selected-count">0</span> selected
+        <span id="sel-marks" style="color:#64748b;font-weight:400"></span>
       </div>
-      <button class="btn btn-primary" onclick="createAssignmentFromSelected()">Create Assignment</button>
       {% if user.is_admin %}
-      <a href="/ui/review" class="btn btn-outline">Review Studio</a>
+      <button class="btn btn-success" onclick="addToExamDraft()" id="btn-add-exam" disabled>＋ Add to Exam Draft</button>
       {% endif %}
     </div>
   </div>
@@ -160,20 +159,34 @@ async function loadQuestions() {
   const diff = document.getElementById('filter-difficulty').value;
   const review = document.getElementById('filter-review').value;
 
-  let url = `/api/v1/questions/search?limit=100`;
-  if (query) url += `&query=${encodeURIComponent(query)}`;
-  if (qType) url += `&question_type=${qType}`;
-  if (diff) url += `&difficulty=${diff}`;
-  if (review) url += `&review_status=${review}`;
-
   const container = document.getElementById('questions-container');
-  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#64748b;">Loading questions...</div>';
+  const totalLabel = document.getElementById('q-total-label');
+  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#64748b;">Loading questions…</div>';
+  totalLabel.textContent = '';
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to load questions');
-    const data = await res.json();
-    renderQuestions(data.questions || []);
+    // Paginate through all results (API max 100 per page)
+    let allQuestions = [];
+    let offset = 0;
+    const PAGE = 100;
+    while (true) {
+      let url = `/api/v1/questions/search?limit=${PAGE}&offset=${offset}`;
+      if (query) url += `&query=${encodeURIComponent(query)}`;
+      if (qType) url += `&question_type=${qType}`;
+      if (diff) url += `&difficulty=${diff}`;
+      if (review) url += `&review_status=${review}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to load questions');
+      const data = await res.json();
+      const page = data.questions || [];
+      allQuestions = allQuestions.concat(page);
+      if (page.length < PAGE) break;   // last page
+      offset += PAGE;
+    }
+    totalLabel.textContent = allQuestions.length
+      ? `${allQuestions.length} question${allQuestions.length !== 1 ? 's' : ''}`
+      : '';
+    renderQuestions(allQuestions);
   } catch (err) {
     container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ef4444;">Error: ${err.message}</div>`;
   }
@@ -208,7 +221,7 @@ function renderQuestions(questions) {
       </ul>
     ` : '';
 
-    const imgHtml = q.image_url ? `
+    const imgHtml = q.image_url && (q.question_text.length <= 80 || q.question_text.startsWith('[Figure')) ? `
       <div class="q-image">
         <img src="${q.image_url}" alt="Question Image Crop" loading="lazy" onerror="this.style.display='none'"/>
       </div>
@@ -225,7 +238,7 @@ function renderQuestions(questions) {
             <span style="font-weight:600;color:#64748b;">${q.marks} Mark${q.marks > 1 ? 's' : ''}</span>
             ${statusBadge}
           </div>
-          <input type="checkbox" class="select-checkbox" ${isSel ? 'checked' : ''} onchange="toggleSelect('${q.question_id}')"/>
+          <input type="checkbox" class="select-checkbox" ${isSel ? 'checked' : ''} onchange="toggleSelect('${q.question_id}', ${q.marks || 1})"/>
         </div>
         <div class="q-body">
           <strong>${q.question_number ? 'Q' + q.question_number + '. ' : ''}</strong>${escapeHtml(q.question_text)}
@@ -234,9 +247,7 @@ function renderQuestions(questions) {
         </div>
         <div class="q-footer">
           <span>${q.chapter_title ? escapeHtml(q.chapter_title) : 'Ch ' + q.chapter_number} (p. ${q.page_start})</span>
-          {% if user.is_admin %}
-          <a href="/ui/review?book_id=${q.book_id}&chapter_id=${q.chapter_id}&highlight=${q.question_id}" style="color:#1a6fc4;text-decoration:none;font-weight:600;">Edit in Studio ›</a>
-          {% endif %}
+          <span style="color:#64748b">${q.book_title ? escapeHtml(q.book_title.substring(0,24)) : ''}</span>
         </div>
       </div>
     `;
@@ -248,28 +259,70 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-async function createAssignmentFromSelected() {
-  if (selectedQuestions.size === 0) {
-    alert('Please select at least one question first.');
-    return;
-  }
-  const title = prompt('Enter a title for this assignment:', 'Practice Worksheet');
-  if (!title) return;
+let _selMarks = 0;
+let _activeDraftId = null;
 
-  const res = await fetch('/api/v1/assignments', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      title: title,
-      question_ids: Array.from(selectedQuestions)
-    })
+// Fetch active draft badge count on load
+(async () => {
+  try {
+    const r = await fetch('/api/v1/exam-drafts/active');
+    if (r.ok) { const d = await r.json(); _activeDraftId = d.draft_id; }
+  } catch(e) {}
+})();
+
+function toggleSelect(qid, marks) {
+  if (selectedQuestions.has(qid)) {
+    selectedQuestions.delete(qid);
+    _selMarks -= (marks || 1);
+  } else {
+    selectedQuestions.add(qid);
+    _selMarks += (marks || 1);
+  }
+  document.getElementById('selected-count').innerText = selectedQuestions.size;
+  const marksEl = document.getElementById('sel-marks');
+  if (marksEl) marksEl.textContent = selectedQuestions.size > 0 ? `· ${_selMarks}M` : '';
+  const addBtn = document.getElementById('btn-add-exam');
+  if (addBtn) addBtn.disabled = selectedQuestions.size === 0;
+  const card = document.getElementById(`q-card-${qid}`);
+  if (card) card.classList.toggle('selected', selectedQuestions.has(qid));
+}
+
+async function addToExamDraft() {
+  if (!selectedQuestions.size) return;
+  const btn = document.getElementById('btn-add-exam');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+
+  if (!_activeDraftId) {
+    const r = await fetch('/api/v1/exam-drafts/active');
+    if (!r.ok) { btn.textContent = '＋ Add to Exam Draft'; btn.disabled = false; return; }
+    const d = await r.json();
+    _activeDraftId = d.draft_id;
+  }
+
+  const res = await fetch(`/api/v1/exam-drafts/${_activeDraftId}/questions`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ question_ids: Array.from(selectedQuestions), include_answer: true })
   });
 
   if (res.ok) {
-    const asg = await res.json();
-    location.href = `/ui/assignments?highlight=${asg.assignment_id}`;
+    const draft = await res.json();
+    btn.textContent = `✓ Added! Draft: ${draft.total_questions}Q`;
+    selectedQuestions.clear();
+    _selMarks = 0;
+    document.getElementById('selected-count').innerText = '0';
+    const marksEl = document.getElementById('sel-marks');
+    if (marksEl) marksEl.textContent = '';
+    document.querySelectorAll('.q-card.selected').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.select-checkbox').forEach(c => c.checked = false);
+    setTimeout(() => {
+      btn.textContent = '＋ Add to Exam Draft';
+      btn.disabled = true;
+    }, 2500);
   } else {
-    alert('Failed to create assignment');
+    btn.textContent = '＋ Add to Exam Draft';
+    btn.disabled = false;
+    alert('Failed to add to exam draft');
   }
 }
 

@@ -5,10 +5,16 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import threading
 import uuid
 from typing import Optional
 
 import pymupdf as fitz
+
+# PyMuPDF is not thread-safe: concurrent fitz.open() on the same file from
+# multiple extraction threads causes segfaults.  This lock serialises all
+# PDF access within this module.
+_FITZ_LOCK = threading.Lock()
 
 from .models import (
     BoundingBox,
@@ -56,6 +62,13 @@ _NUMBERED_ITEM = re.compile(
     r"(?=\n\s*(?:(?:Q(?:uestion)?|Problem)\.?\s*|\(?\b)\d+(?:[\.\-]\d+)?\s*[\.\):\-]\s|\Z|"
     r"WORKED\s+OUT|SOLVED\s+EXAMPLES?|QUESTIONS?\s+FOR|OBJECTIVE\s+[I12]|EXERCISES?|PRACTICE\s+QUESTIONS?|PROBLEMS?)",
     re.S | re.I,
+)
+
+# ── Figure / diagram reference — question text is mostly/entirely visual ──────
+_FIGURE_REF_RE = re.compile(
+    r"\b(?:Fig(?:ure)?s?\.?\s*[\d\.]+|diagram|the\s+figure|the\s+graph|the\s+circuit|the\s+table"
+    r"|shown\s+(?:in|above|below)|refer\s+to\s+(?:the\s+)?(?:figure|diagram))\b",
+    re.I,
 )
 
 # ── Solution / Answer markers ─────────────────────────────────────────────────
@@ -157,6 +170,52 @@ def _split_solution(text: str) -> tuple[str, Optional[str], Optional[str]]:
     return text.strip(), None, None
 
 
+def _crop_with_open_doc(
+    doc: fitz.Document,
+    question_id: str,
+    page_number: int,
+    snippet_text: str,
+) -> tuple[Optional[BoundingBox], Optional[str], Optional[str]]:
+    """
+    Inner crop helper that uses an already-open fitz.Document.
+    Must be called while holding _FITZ_LOCK.
+    """
+    if page_number < 1 or page_number > len(doc):
+        return None, None, None
+
+    page = doc[page_number - 1]
+    p_rect = page.rect
+
+    words = snippet_text.split()[:8]
+    search_str = " ".join(words) if words else ""
+    rects = page.search_for(search_str) if search_str else []
+
+    if not rects and len(words) > 3:
+        rects = page.search_for(" ".join(words[:4]))
+
+    if rects:
+        r0 = rects[0]
+        x0 = max(0.0, r0.x0 - 15.0)
+        y0 = max(0.0, r0.y0 - 10.0)
+        x1 = min(p_rect.width, r0.x1 + 320.0)
+        y1 = min(p_rect.height, r0.y1 + 180.0)
+        clip = fitz.Rect(x0, y0, x1, y1)
+    else:
+        x0, y0 = 0.0, 50.0
+        x1, y1 = p_rect.width, min(p_rect.height, 250.0)
+        clip = fitz.Rect(x0, y0, x1, y1)
+
+    dest_png = question_crop_path(question_id)
+    dest_png.parent.mkdir(parents=True, exist_ok=True)
+
+    pix = page.get_pixmap(clip=clip, dpi=160, colorspace=fitz.csRGB)
+    pix.save(str(dest_png))
+
+    bb = BoundingBox(x0=clip.x0, y0=clip.y0, x1=clip.x1, y1=clip.y1)
+    image_url = f"/crops/{question_id}.png"
+    return bb, image_url, str(dest_png)
+
+
 def crop_question_box_and_save(
     book_id: str,
     question_id: str,
@@ -166,52 +225,19 @@ def crop_question_box_and_save(
     """
     Locates question on page and renders an exact PNG image crop (Layer A).
     Saves image under storage/crops/{question_id}.png and returns (bounding_box, image_url, image_path).
+    Serialises PDF access with _FITZ_LOCK to prevent concurrent-open segfaults.
     """
     pdf_p = book_path(book_id)
     if not pdf_p.exists():
         return None, None, None
 
     try:
-        doc = fitz.open(str(pdf_p))
-        if page_number < 1 or page_number > len(doc):
-            doc.close()
-            return None, None, None
-
-        page = doc[page_number - 1]
-        p_rect = page.rect
-
-        # Search for first 5-8 words of snippet
-        words = snippet_text.split()[:8]
-        search_str = " ".join(words) if words else ""
-        rects = page.search_for(search_str) if search_str else []
-
-        if not rects and len(words) > 3:
-            rects = page.search_for(" ".join(words[:4]))
-
-        if rects:
-            r0 = rects[0]
-            # Create a clean crop box bounded within page width and reasonable height
-            x0 = max(0.0, r0.x0 - 15.0)
-            y0 = max(0.0, r0.y0 - 10.0)
-            x1 = min(p_rect.width, r0.x1 + 320.0)
-            y1 = min(p_rect.height, r0.y1 + 180.0)
-            clip = fitz.Rect(x0, y0, x1, y1)
-        else:
-            # Fallback crop: full width of page with default height band
-            x0, y0 = 0.0, 50.0
-            x1, y1 = p_rect.width, min(p_rect.height, 250.0)
-            clip = fitz.Rect(x0, y0, x1, y1)
-
-        dest_png = question_crop_path(question_id)
-        dest_png.parent.mkdir(parents=True, exist_ok=True)
-
-        pix = page.get_pixmap(clip=clip, dpi=160, colorspace=fitz.csRGB)
-        pix.save(str(dest_png))
-        doc.close()
-
-        bb = BoundingBox(x0=clip.x0, y0=clip.y0, x1=clip.x1, y1=clip.y1)
-        image_url = f"/crops/{question_id}.png"
-        return bb, image_url, str(dest_png)
+        with _FITZ_LOCK:
+            doc = fitz.open(str(pdf_p))
+            try:
+                return _crop_with_open_doc(doc, question_id, page_number, snippet_text)
+            finally:
+                doc.close()
     except Exception as exc:
         logger.debug("Could not crop question %s: %s", question_id, exc)
         return None, None, None
@@ -238,8 +264,9 @@ def extract_questions_from_chapter(
     """
     Extract all question/example types from the chapter pages.
 
-    Builds one combined string with embedded page markers so that
-    sections and questions that span page boundaries are handled correctly.
+    Opens the PDF once per chapter (under _FITZ_LOCK) so that all per-question
+    crops share a single document handle, then closes it when done.
+    Concurrent chapter extractions serialise via _FITZ_LOCK rather than racing.
     """
     chapter_pages = sorted(
         [p for p in pages if chapter.page_start <= p["page_number"] <= chapter.page_end],
@@ -256,93 +283,121 @@ def extract_questions_from_chapter(
     combined = "\n".join(parts)
     first_page = chapter_pages[0]["page_number"]
 
-    results: list[QuestionRecord] = []
-
-    # ── 1. In-text numbered examples ─────────────────────────────────────────
-    for m in _INLINE_EXAMPLE.finditer(combined):
-        num = m.group(1)
-        start = m.start()
-        snippet_raw = combined[start: start + 1000]
-        snippet = _strip_markers(snippet_raw)
-        q_text, sol, ans = _split_solution(snippet)
-        if not q_text or len(q_text) < 5:
-            continue
-        pg = _page_at(combined, start, first_page)
-        q_id = str(uuid.uuid4())
-        stem, opts = _extract_options(q_text)
-        final_type = _detect_refined_type(QuestionType.example, stem, opts)
-        diff, marks = _estimate_metadata(final_type, stem, opts)
-        c_hash = _compute_hash(stem)
-        bb, img_url, img_path = crop_question_box_and_save(book_id, q_id, pg, stem)
-
-        results.append(QuestionRecord(
-            question_id=q_id,
-            book_id=book_id,
-            chapter_id=chapter.chapter_id,
-            chapter_number=chapter.number,
-            question_type=final_type,
-            question_number=num,
-            question_text=stem[:1200],
-            options=opts,
-            solution_text=sol,
-            answer_text=ans,
-            page_start=pg,
-            page_end=pg,
-            confidence=0.85,
-            extraction_method="pattern",
-            bounding_box=bb,
-            image_url=img_url,
-            image_path=img_path,
-            difficulty=diff,
-            marks=marks,
-            content_hash=c_hash,
-            chapter_title=chapter.title,
-            review_status=ReviewStatus.pending,
-        ))
-
-    # ── 2–6. Named sections ───────────────────────────────────────────────────
-    _SECTION_ORDER = [
-        QuestionType.worked_example,
-        QuestionType.short_answer,
-        QuestionType.objective_1,
-        QuestionType.objective_2,
-        QuestionType.exercise,
-    ]
-
-    for q_type in _SECTION_ORDER:
-        results += _extract_section(book_id, chapter, combined, first_page, q_type)
-
-    # Sort by page then question number (numeric where possible)
-    def _sort_key(q: QuestionRecord):
+    # Open the PDF once for all crops in this chapter
+    pdf_p = book_path(book_id)
+    doc: Optional[fitz.Document] = None
+    if pdf_p.exists():
         try:
-            n = int(q.question_number or "0")
-        except ValueError:
-            n = 0
-        type_order = {
-            QuestionType.example: 0,
-            QuestionType.worked_example: 1,
-            QuestionType.short_answer: 2,
-            QuestionType.objective_1: 3,
-            QuestionType.objective_2: 4,
-            QuestionType.exercise: 5,
-        }
-        return (q.page_start, type_order.get(q.question_type, 9), n)
+            with _FITZ_LOCK:
+                doc = fitz.open(str(pdf_p))
+        except Exception as exc:
+            logger.warning("Could not open PDF for crops (book %s): %s", book_id, exc)
+            doc = None
 
-    results.sort(key=_sort_key)
+    def _crop(q_id: str, pg: int, stem: str):
+        if doc is None:
+            return None, None, None
+        try:
+            with _FITZ_LOCK:
+                return _crop_with_open_doc(doc, q_id, pg, stem)
+        except Exception as exc:
+            logger.debug("Could not crop question %s: %s", q_id, exc)
+            return None, None, None
 
-    logger.info(
-        "Extracted %d items from chapter %s (%s)",
-        len(results), chapter.chapter_id, chapter.title,
-    )
-    return results
+    try:
+        results: list[QuestionRecord] = []
+
+        # ── 1. In-text numbered examples ─────────────────────────────────────
+        for m in _INLINE_EXAMPLE.finditer(combined):
+            num = m.group(1)
+            start = m.start()
+            snippet_raw = combined[start: start + 1000]
+            snippet = _strip_markers(snippet_raw)
+            q_text, sol, ans = _split_solution(snippet)
+            if not q_text or len(q_text) < 5:
+                continue
+            pg = _page_at(combined, start, first_page)
+            q_id = str(uuid.uuid4())
+            stem, opts = _extract_options(q_text)
+            final_type = _detect_refined_type(QuestionType.example, stem, opts)
+            diff, marks = _estimate_metadata(final_type, stem, opts)
+            c_hash = _compute_hash(stem)
+            bb, img_url, img_path = _crop(q_id, pg, stem)
+
+            results.append(QuestionRecord(
+                question_id=q_id,
+                book_id=book_id,
+                chapter_id=chapter.chapter_id,
+                chapter_number=chapter.number,
+                question_type=final_type,
+                question_number=num,
+                question_text=stem[:1200],
+                options=opts,
+                solution_text=sol,
+                answer_text=ans,
+                page_start=pg,
+                page_end=pg,
+                confidence=0.85,
+                extraction_method="pattern",
+                bounding_box=bb,
+                image_url=img_url,
+                image_path=img_path,
+                difficulty=diff,
+                marks=marks,
+                content_hash=c_hash,
+                chapter_title=chapter.title,
+                review_status=ReviewStatus.pending,
+            ))
+
+        # ── 2–6. Named sections ───────────────────────────────────────────────
+        _SECTION_ORDER = [
+            QuestionType.worked_example,
+            QuestionType.short_answer,
+            QuestionType.objective_1,
+            QuestionType.objective_2,
+            QuestionType.exercise,
+        ]
+
+        for q_type in _SECTION_ORDER:
+            results += _extract_section(doc, chapter, combined, first_page, q_type, book_id)
+
+        # Sort by page then question number (numeric where possible)
+        def _sort_key(q: QuestionRecord):
+            try:
+                n = int(q.question_number or "0")
+            except ValueError:
+                n = 0
+            type_order = {
+                QuestionType.example: 0,
+                QuestionType.worked_example: 1,
+                QuestionType.short_answer: 2,
+                QuestionType.objective_1: 3,
+                QuestionType.objective_2: 4,
+                QuestionType.exercise: 5,
+            }
+            return (q.page_start, type_order.get(q.question_type, 9), n)
+
+        results.sort(key=_sort_key)
+
+        logger.info(
+            "Extracted %d items from chapter %s (%s)",
+            len(results), chapter.chapter_id, chapter.title,
+        )
+        return results
+
+    finally:
+        if doc is not None:
+            with _FITZ_LOCK:
+                doc.close()
 
 
 def _extract_section(
-    book_id: str,
+    doc: Optional[fitz.Document],
     chapter: ChapterRecord,
     combined: str,
     first_page: int,
     q_type: QuestionType,
+    book_id: str = "",
 ) -> list[QuestionRecord]:
     """
     Find the section header in the combined chapter text and extract
@@ -366,11 +421,19 @@ def _extract_section(
         num = m.group(1)
         item_raw = m.group(2).strip()
         item_text = _strip_markers(item_raw)
-        if len(item_text) < 10:
+        # Allow short items only when they reference a figure/diagram
+        if len(item_text) < 10 and not _FIGURE_REF_RE.search(item_text):
             continue
         q_text, sol, ans = _split_solution(item_text)
-        if not q_text or len(q_text) < 5:
+        if not q_text:
             continue
+        # If the extracted stem is too short but references a figure, keep it
+        # with a descriptive placeholder so the DB NOT NULL constraint is met
+        # and the question appears in the picker with its image crop.
+        if len(q_text) < 5:
+            if not _FIGURE_REF_RE.search(item_text):
+                continue
+            q_text = f"[Figure/diagram question {num} — see image crop]"
 
         # Page number = most recent marker before this match in the full combined string
         abs_pos = section_start + m.start()
@@ -380,7 +443,16 @@ def _extract_section(
         final_type = _detect_refined_type(q_type, stem, opts)
         diff, marks = _estimate_metadata(final_type, stem, opts)
         c_hash = _compute_hash(stem)
-        bb, img_url, img_path = crop_question_box_and_save(book_id, q_id, pg, stem)
+        # Crop using the already-open document
+        if doc is not None:
+            try:
+                with _FITZ_LOCK:
+                    bb, img_url, img_path = _crop_with_open_doc(doc, q_id, pg, stem)
+            except Exception as exc:
+                logger.debug("Could not crop question %s: %s", q_id, exc)
+                bb, img_url, img_path = None, None, None
+        else:
+            bb, img_url, img_path = None, None, None
 
         results.append(QuestionRecord(
             question_id=q_id,

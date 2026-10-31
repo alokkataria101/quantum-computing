@@ -1,6 +1,6 @@
 # Book Knowledge Service
 
-A FastAPI microservice for PDF textbook ingestion, full-text search, page viewing, chapter detection, question extraction, and AI-powered Q&A using IBM watsonx.
+A FastAPI microservice for PDF textbook ingestion, full-text search, page viewing, chapter detection, question extraction, AI-powered Q&A, and a complete **Exam Paper Preparation** workflow — from extracting questions out of any book chapter all the way to a downloadable, school-branded exam paper.
 
 ---
 
@@ -64,17 +64,21 @@ curl -b jar -X DELETE localhost:8000/books/<book_id>
 
 The service ships with a built-in web interface — no API knowledge needed.
 
+Navigation bar: **Library · Question Bank · 📝 Exam Draft · Tasks · Students · Logout**
+
 | URL | What you get |
 |-----|-------------|
 | **http://localhost:8000/login** | Sign in as admin or student |
-| **http://localhost:8000/ui/question-bank** | **Universal Question Bank** — visual grid, faceted search (type, difficulty, subject, grade), and direct assignment creator |
-| **http://localhost:8000/ui/review** | **Split-Screen Review Studio** — side-by-side original PDF page vs editable question cards with approval workflow |
-| **http://localhost:8000/ui/assignments** | **Interactive Assignment Builder** — manual and auto-generation of worksheets with multi-format export (HTML, Markdown, JSON) |
-| **http://localhost:8000/ui/students** | Add students *(admin only)* |
-| **http://localhost:8000/ui/tasks** | Student: *My Tasks* (questions assigned to me). Admin: everything shared, and with whom, with Remove / Clear this chapter / Clear all tasks buttons |
 | **http://localhost:8000/ui** | Library home — all books, upload, index |
-| **http://localhost:8000/ui/books/{book_id}** | Book detail — chapters list, search, re-index |
+| **http://localhost:8000/ui/books/{book_id}** | Book detail — chapters list, search, re-index, Compile PDF, Prepare Exam |
 | **http://localhost:8000/ui/books/{book_id}/chapters/{chapter_id}** | Chapter page — reader, questions, AI ask |
+| **http://localhost:8000/ui/question-bank** | **Universal Question Bank** — visual grid, faceted search (type, difficulty, subject, grade), Add to Exam Draft |
+| **http://localhost:8000/ui/exam-draft** | **📝 Exam Draft** — full exam paper editor with school details, question list, per-question marks/label/text, and one-click HTML download for printing |
+| **http://localhost:8000/ui/students** | Add / list students *(admin only)* |
+| **http://localhost:8000/ui/tasks** | Student: *My Tasks* (questions assigned to me). Admin: everything shared, and with whom, with Remove / Clear this chapter / Clear all tasks buttons |
+| **http://localhost:8000/ui/compiled-pdfs** | Compiled PDFs history *(admin only)* |
+
+> **Note:** The Split-Screen Review Studio (`/ui/review`) and Assignment Builder (`/ui/assignments`) have no UI nav link but their REST APIs (`/api/v1/assignments`) remain fully functional.
 
 ### Library home (`/ui`)
 - Upload a PDF by drag-and-drop or file picker — indexing starts automatically
@@ -90,6 +94,7 @@ Admins see a shortcut bar: **📋 Compiled PDFs history** · **👥 Manage Stude
 - **💬 Ask AI** — type any question; watsonx answers from the whole book (or any one chapter you pick in the *Search in* list) and lists the chapter and page of every source
 - **Re-index** button with live progress bar; **Extract All Questions** in one click
 - **📄 Compile PDF** *(admin only)* — build a downloadable PDF of notes and/or questions from selected chapters without any AI; after compile succeeds, **📤 Share with Students** and **📋 View all past compiled PDFs →** links appear (see [Compile PDF](#compile-pdf-admin-only))
+- **📝 Prepare Exam from these Chapters** — appears after a compile; opens an inline question picker showing all extracted questions with their image crops; select questions with checkboxes, choose marks, click **Add to Exam Draft**
 
 ### Compiled PDFs history (`/ui/compiled-pdfs`) — admin only
 - Lists **every PDF ever compiled** across all books — survives page refresh and restarts
@@ -100,9 +105,24 @@ Admins see a shortcut bar: **📋 Compiled PDFs history** · **👥 Manage Stude
 ### Chapter page (`/ui/books/{id}/chapters/{ch_id}`)
 - **Left half**: page-by-page reader — OCR images with keyboard navigation (← →), toggle extracted text
 - **Right half — tabs**:
-  - **Questions** — filtered by type (Exercise / Example / MCQ / Short Answer…), show/hide answers, "Go to page" link
+  - **Questions** — filtered by type (Exercise / Example / MCQ / Short Answer…), show/hide answers, "Go to page" link, image crops displayed inline
   - **⚡ Generate** *(admin)* — pick type (MCQ / Short / Numerical / Mixed), difficulty, and count; AI generates questions with answers; edit and share them
   - **📢 Shared** — questions the admin has published for this chapter
+
+### Universal Question Bank (`/ui/question-bank`)
+- Visual grid of every extracted question across all books
+- Faceted search: type, difficulty, subject, grade, free text
+- Each card shows question text, image crop (if available), options, answer
+- **＋ Add to Exam Draft** button on every card — choose marks and add directly to the active exam draft
+
+### Exam Draft (`/ui/exam-draft`)
+- One active draft is auto-created on first visit
+- Left panel — question list: each card shows question number label, type badge, marks, question text, image crop, options, and answer
+  - Click **✎ Edit** to change the label, marks, question text, and answer inline; toggle **Include answer in exam paper**
+  - Drag to reorder; click **🗑** to remove a question
+- Right panel — paper details (auto-saved): school name, subject, class/grade, exam type, academic year, full marks, pass marks, duration, instructions, logo URL
+- **Approve & Get PDF** — instantly downloads a print-ready HTML file; open in any browser and use *Print → Save as PDF*
+- Questions from both the **Compile PDF picker** (chapter-level) and the **Question Bank** feed into the same draft
 
 ---
 
@@ -127,7 +147,8 @@ Admins see a shortcut bar: **📋 Compiled PDFs history** · **👥 Manage Stude
 16. [Run tests](#run-tests)
 17. [API reference](#api-reference)
 18. [Project structure](#project-structure)
-19. [Troubleshooting](#troubleshooting)
+19. [Customising for your school](#customising-for-your-school)
+20. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -1044,6 +1065,17 @@ cd book-knowledge-service
 | GET | `/api/v1/assignments/{id}` | User | Get assignment details with attached questions |
 | POST | `/api/v1/assignments/auto-generate` | User | Auto-generate balanced assignment from repository |
 | GET | `/api/v1/assignments/{id}/export` | User | Export assignment worksheet (HTML / Markdown / JSON / Text) |
+| POST | `/api/v1/exam-drafts` | User | Create a new exam draft |
+| GET | `/api/v1/exam-drafts` | User | List all exam drafts |
+| GET | `/api/v1/exam-drafts/active` | User | Get or create the active (in-progress) draft |
+| GET | `/api/v1/exam-drafts/{draft_id}` | User | Get a draft with all questions and paper metadata |
+| PATCH | `/api/v1/exam-drafts/{draft_id}` | User | Update paper metadata (school, marks, duration, instructions…) |
+| DELETE | `/api/v1/exam-drafts/{draft_id}` | User | Delete a draft |
+| POST | `/api/v1/exam-drafts/{draft_id}/questions` | User | Add one or more questions to a draft (with optional marks override) |
+| DELETE | `/api/v1/exam-drafts/{draft_id}/questions/{item_id}` | User | Remove a question from a draft |
+| PATCH | `/api/v1/exam-drafts/{draft_id}/questions/{item_id}` | User | Edit a draft question item (label, marks, question text, answer, include_answer) |
+| POST | `/api/v1/exam-drafts/{draft_id}/approve` | User | Approve draft and return print-ready HTML exam paper |
+| POST | `/api/v1/exam-drafts/{draft_id}/share` | Admin | Share a draft paper with students |
 | GET | `/jobs/{job_id}` | User | Job progress |
 | GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | User | Export questions |
 | POST | `/books/{book_id}/compile-pdf` | Admin | Start a compile-PDF job (notes/questions/both, chapter selection) |
@@ -1077,16 +1109,16 @@ Full interactive docs: **http://localhost:8000/docs**
 ```
 book-knowledge-service/
 ├── app/
-│   ├── main.py               FastAPI app, viewer route, startup/shutdown
+│   ├── main.py               FastAPI app, UI routes (/ui/exam-draft, /ui/question-bank …), startup/shutdown
 │   ├── config.py             Settings (env / .env file)
 │   ├── auth.py               Text-file credentials, sessions, role guards
-│   ├── models.py             Pydantic schemas
-│   ├── database.py           SQLite + FTS5 schema
+│   ├── models.py             Pydantic schemas (incl. ExamDraft*, ExamDraftQuestion*, ExamDraftCreate/Patch)
+│   ├── database.py           SQLite + FTS5 schema (incl. exam_drafts, exam_draft_questions tables)
 │   ├── storage.py            PDF storage, SHA-256 dedup
 │   ├── pdf_processor.py      PyMuPDF extraction, OCR fallback, PNG render
 │   ├── chapter_parser.py     chapters from PDF bookmarks, else the printed Table of Contents, else regex
 │   ├── indexer.py            Page persistence, FTS5 rebuild
-│   ├── question_extractor.py Pattern-based question extraction
+│   ├── question_extractor.py Pattern-based question extraction + image crop generation (image_url=/crops/{id}.png)
 │   ├── question_pdf.py       Crop questions from PDF pages into image cards
 │   ├── compiler.py           Compile notes+questions PDFs without AI
 │   ├── ai_client.py          IBM watsonx.ai wrapper (optional, graceful fallback)
@@ -1097,7 +1129,8 @@ book-knowledge-service/
 │       ├── books.py          POST/GET/DELETE /books
 │       ├── index.py          /index, /chapters, /pages, /search
 │       ├── questions.py      /questions, /extract, /generate (pattern), /api/v1/questions/search, PATCH
-│       ├── assignments.py    /api/v1/assignments, /auto-generate, /export
+│       ├── assignments.py    /api/v1/assignments, /auto-generate, /export (API only — no UI nav link)
+│       ├── exam_drafts.py    /api/v1/exam-drafts — full exam draft CRUD + approve + share
 │       ├── ai.py             /ask, /generate-questions (watsonx)
 │       ├── shared.py         admin-shared questions: list / share / edit / unshare
 │       ├── compile.py        /compile-pdf, /compiled-pdfs, /shared-pdfs — compile history + sharing
@@ -1108,19 +1141,23 @@ book-knowledge-service/
 │   ├── base.html             Bootstrap 5 base template with navigation bar
 │   ├── login.html            sign-in page (school branding)
 │   ├── index.html            library home — admin portal / student portal
-│   ├── question_bank.html    universal visual question bank grid & selection
-│   ├── review_studio.html    split-screen PDF review & verification studio
-│   ├── assignments.html      assignment builder & printable worksheet generator
+│   ├── book.html             book detail — chapters, search, compile PDF, exam picker
+│   ├── chapter.html          chapter reader — page viewer, questions, AI ask
+│   ├── question_bank.html    universal visual question bank grid + Add to Exam Draft
+│   ├── exam_draft.html       exam paper editor — question list, paper details, PDF download
+│   ├── review_studio.html    split-screen PDF review & verification studio (no UI nav link)
+│   ├── assignments.html      assignment builder & printable worksheet generator (no UI nav link)
 │   ├── students.html         add/list students (admin)
 │   ├── compiled_pdfs.html    compiled PDFs history page (admin)
-│   ├── _userbar.html         user name + navigation links + logout
+│   ├── _userbar.html         navigation bar: Library · Question Bank · 📝 Exam Draft · Tasks · Students
 │   └── viewer.html           Jinja2 page viewer
 ├── tests/
 │   ├── conftest.py
 │   ├── test_api.py
-│   ├── test_auth.py          login, roles, student mgmt, book delete
-│   ├── test_shared.py        share / edit / unshare, student view, page tabs per role
-│   └── test_question_pdf.py  question PDF crop pipeline unit tests
+│   ├── test_auth.py                        login, roles, student mgmt, book delete
+│   ├── test_shared.py                      share / edit / unshare, student view, page tabs per role
+│   ├── test_question_bank_and_assignments.py  question bank search, exam draft CRUD, /ui/exam-draft page
+│   └── test_question_pdf.py                question PDF crop pipeline unit tests
 ├── storage/                  git-ignored
 │   ├── auth/                 admins.txt, students.txt (plain-text credentials)
 │   ├── books/                uploaded PDFs

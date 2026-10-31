@@ -492,6 +492,113 @@ class AssignedTaskList(BaseModel):
     total: int
 
 
+# ── Exam Draft ────────────────────────────────────────────────────────────────
+
+class ExamType(str, Enum):
+    mid_term   = "mid_term"
+    annual     = "annual"
+    unit_test  = "unit_test"
+    assignment = "assignment"
+    mock       = "mock"
+    other      = "other"
+
+
+class ExamDraftStatus(str, Enum):
+    draft    = "draft"
+    approved = "approved"
+    shared   = "shared"
+
+
+class ExamDraftCreate(BaseModel):
+    title: str = Field("Untitled Exam", max_length=300)
+    exam_type: ExamType = ExamType.mid_term
+    school_name: str = Field("", max_length=200)
+    school_logo_url: str = Field("", max_length=500)
+    subject: str = Field("", max_length=100)
+    class_grade: Optional[int] = None
+    academic_year: str = Field("", max_length=20)
+    full_marks: int = Field(100, ge=1)
+    pass_marks: Optional[int] = None
+    duration_minutes: Optional[int] = None
+    instructions: str = Field("", max_length=2000)
+
+
+class ExamDraftPatch(BaseModel):
+    title: Optional[str] = None
+    exam_type: Optional[ExamType] = None
+    school_name: Optional[str] = None
+    school_logo_url: Optional[str] = None
+    subject: Optional[str] = None
+    class_grade: Optional[int] = None
+    academic_year: Optional[str] = None
+    full_marks: Optional[int] = None
+    pass_marks: Optional[int] = None
+    duration_minutes: Optional[int] = None
+    instructions: Optional[str] = None
+    status: Optional[ExamDraftStatus] = None
+
+
+class ExamDraftQuestionItem(BaseModel):
+    item_id: str
+    draft_id: str
+    question_id: str
+    order_index: int = 0
+    marks_override: Optional[int] = None
+    question_number_label: str = ""    # e.g. "Q1", "1(a)"
+    include_answer: bool = True
+    question: Optional[QuestionRecord] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ExamDraftRecord(BaseModel):
+    draft_id: str
+    title: str
+    exam_type: ExamType = ExamType.mid_term
+    school_name: str = ""
+    school_logo_url: str = ""
+    subject: str = ""
+    class_grade: Optional[int] = None
+    academic_year: str = ""
+    full_marks: int = 100
+    pass_marks: Optional[int] = None
+    duration_minutes: Optional[int] = None
+    instructions: str = ""
+    status: ExamDraftStatus = ExamDraftStatus.draft
+    total_questions: int = 0
+    total_marks: int = 0
+    questions: list[ExamDraftQuestionItem] = []
+    created_by: str = "admin"
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ExamDraftList(BaseModel):
+    drafts: list[ExamDraftRecord]
+    total: int
+
+
+class ExamDraftAddQuestionsRequest(BaseModel):
+    question_ids: list[str] = Field(..., min_length=1)
+    include_answer: bool = True
+
+
+class ExamDraftItemPatch(BaseModel):
+    marks_override: Optional[int] = None
+    question_number_label: Optional[str] = None
+    include_answer: Optional[bool] = None
+    question_text: Optional[str] = None
+    answer_text: Optional[str] = None
+
+
+class ExamShareRequest(BaseModel):
+    students: Optional[list[str]] = Field(
+        None, description="Specific student usernames. Omit/null = all students."
+    )
+
+
 # ── Shared compiled PDFs ──────────────────────────────────────────────────────
 
 class CompiledPdf(BaseModel):
