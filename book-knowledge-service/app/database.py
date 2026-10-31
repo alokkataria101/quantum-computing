@@ -18,6 +18,14 @@ from .models import (
     AssignmentRecord,
     BoundingBox,
     DifficultyLevel,
+    ExamDraftAddQuestionsRequest,
+    ExamDraftCreate,
+    ExamDraftItemPatch,
+    ExamDraftPatch,
+    ExamDraftQuestionItem,
+    ExamDraftRecord,
+    ExamDraftStatus,
+    ExamType,
     QuestionPatchRequest,
     QuestionRecord,
     QuestionSearchQuery,
@@ -287,6 +295,48 @@ async def _create_schema(db: aiosqlite.Connection) -> None:
         PRIMARY KEY (share_id, student)
     );
     CREATE INDEX IF NOT EXISTS idx_shared_pdf_assignee ON shared_pdf_assignees(student);
+
+    -- ── Exam Drafts ───────────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS exam_drafts (
+        draft_id          TEXT PRIMARY KEY,
+        title             TEXT NOT NULL DEFAULT 'Untitled Exam',
+        exam_type         TEXT NOT NULL DEFAULT 'mid_term',
+        school_name       TEXT NOT NULL DEFAULT '',
+        school_logo_url   TEXT NOT NULL DEFAULT '',
+        subject           TEXT NOT NULL DEFAULT '',
+        class_grade       INTEGER,
+        academic_year     TEXT NOT NULL DEFAULT '',
+        full_marks        INTEGER NOT NULL DEFAULT 100,
+        pass_marks        INTEGER,
+        duration_minutes  INTEGER,
+        instructions      TEXT NOT NULL DEFAULT '',
+        status            TEXT NOT NULL DEFAULT 'draft',
+        total_questions   INTEGER NOT NULL DEFAULT 0,
+        total_marks       INTEGER NOT NULL DEFAULT 0,
+        created_by        TEXT NOT NULL DEFAULT 'admin',
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS exam_draft_questions (
+        item_id                 TEXT PRIMARY KEY,
+        draft_id                TEXT NOT NULL REFERENCES exam_drafts(draft_id) ON DELETE CASCADE,
+        question_id             TEXT NOT NULL REFERENCES questions(question_id) ON DELETE CASCADE,
+        order_index             INTEGER NOT NULL DEFAULT 0,
+        marks_override          INTEGER,
+        question_number_label   TEXT NOT NULL DEFAULT '',
+        include_answer          INTEGER NOT NULL DEFAULT 1,
+        question_text_override  TEXT,
+        answer_text_override    TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_edq_draft ON exam_draft_questions(draft_id);
+
+    -- Who a shared exam is assigned to. No rows = every student.
+    CREATE TABLE IF NOT EXISTS exam_draft_assignees (
+        draft_id  TEXT NOT NULL REFERENCES exam_drafts(draft_id) ON DELETE CASCADE,
+        student   TEXT NOT NULL,
+        PRIMARY KEY (draft_id, student)
+    );
     """)
 
 
@@ -784,3 +834,309 @@ async def delete_assignment_db(
     await db.execute("DELETE FROM assignments WHERE assignment_id = ?", (assignment_id,))
     await db.commit()
     return True
+
+
+# ── Exam Draft DB Operations ──────────────────────────────────────────────────
+
+def _row_to_exam_draft(row: aiosqlite.Row) -> ExamDraftRecord:
+    d = dict(row)
+    try:
+        exam_type = ExamType(d.get("exam_type", "mid_term"))
+    except Exception:
+        exam_type = ExamType.other
+    try:
+        status = ExamDraftStatus(d.get("status", "draft"))
+    except Exception:
+        status = ExamDraftStatus.draft
+    return ExamDraftRecord(
+        draft_id=d["draft_id"],
+        title=d.get("title", "Untitled Exam"),
+        exam_type=exam_type,
+        school_name=d.get("school_name") or "",
+        school_logo_url=d.get("school_logo_url") or "",
+        subject=d.get("subject") or "",
+        class_grade=d.get("class_grade"),
+        academic_year=d.get("academic_year") or "",
+        full_marks=d.get("full_marks", 100),
+        pass_marks=d.get("pass_marks"),
+        duration_minutes=d.get("duration_minutes"),
+        instructions=d.get("instructions") or "",
+        status=status,
+        total_questions=d.get("total_questions", 0),
+        total_marks=d.get("total_marks", 0),
+        questions=[],
+        created_by=d.get("created_by", "admin"),
+        created_at=datetime.fromisoformat(d["created_at"]),
+        updated_at=datetime.fromisoformat(d["updated_at"]),
+    )
+
+
+def _row_to_exam_item(row: aiosqlite.Row, q: Optional[QuestionRecord] = None) -> ExamDraftQuestionItem:
+    d = dict(row)
+    # Apply overrides onto the question copy so the UI always shows the edited version
+    if q and (d.get("question_text_override") or d.get("answer_text_override")):
+        if d.get("question_text_override"):
+            q = q.model_copy(update={"question_text": d["question_text_override"]})
+        if d.get("answer_text_override"):
+            q = q.model_copy(update={"answer_text": d["answer_text_override"],
+                                      "solution_text": d["answer_text_override"]})
+    return ExamDraftQuestionItem(
+        item_id=d["item_id"],
+        draft_id=d["draft_id"],
+        question_id=d["question_id"],
+        order_index=d.get("order_index", 0),
+        marks_override=d.get("marks_override"),
+        question_number_label=d.get("question_number_label") or "",
+        include_answer=bool(d.get("include_answer", 1)),
+        question=q,
+    )
+
+
+async def get_or_create_active_draft_db(
+    db: aiosqlite.Connection,
+    created_by: str = "admin",
+) -> ExamDraftRecord:
+    """Return the single active draft (draft status), creating one if none exists."""
+    async with db.execute(
+        "SELECT * FROM exam_drafts WHERE status = 'draft' ORDER BY updated_at DESC LIMIT 1"
+    ) as cur:
+        row = await cur.fetchone()
+    if row:
+        return await get_exam_draft_db(db, row["draft_id"])
+    # Create a new empty draft
+    return await create_exam_draft_db(db, ExamDraftCreate(), created_by)
+
+
+async def create_exam_draft_db(
+    db: aiosqlite.Connection,
+    data: ExamDraftCreate,
+    created_by: str = "admin",
+) -> ExamDraftRecord:
+    draft_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        """INSERT INTO exam_drafts
+           (draft_id, title, exam_type, school_name, school_logo_url, subject,
+            class_grade, academic_year, full_marks, pass_marks, duration_minutes,
+            instructions, status, total_questions, total_marks, created_by, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'draft',0,0,?,?,?)""",
+        (draft_id, data.title, data.exam_type.value, data.school_name,
+         data.school_logo_url, data.subject, data.class_grade, data.academic_year,
+         data.full_marks, data.pass_marks, data.duration_minutes, data.instructions,
+         created_by, now, now),
+    )
+    await db.commit()
+    async with db.execute("SELECT * FROM exam_drafts WHERE draft_id = ?", [draft_id]) as cur:
+        row = await cur.fetchone()
+    return _row_to_exam_draft(row)
+
+
+async def get_exam_draft_db(
+    db: aiosqlite.Connection,
+    draft_id: str,
+) -> Optional[ExamDraftRecord]:
+    async with db.execute("SELECT * FROM exam_drafts WHERE draft_id = ?", [draft_id]) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    rec = _row_to_exam_draft(row)
+    async with db.execute(
+        "SELECT * FROM exam_draft_questions WHERE draft_id = ? ORDER BY order_index",
+        [draft_id],
+    ) as cur:
+        item_rows = await cur.fetchall()
+    items = []
+    total_marks = 0
+    for ir in item_rows:
+        q = await get_question_by_id_db(db, ir["question_id"])
+        item = _row_to_exam_item(ir, q)
+        m = item.marks_override if item.marks_override is not None else (q.marks if q else 1)
+        total_marks += m
+        items.append(item)
+    rec.questions = items
+    rec.total_questions = len(items)
+    rec.total_marks = total_marks
+    return rec
+
+
+async def list_exam_drafts_db(
+    db: aiosqlite.Connection,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[ExamDraftRecord], int]:
+    async with db.execute("SELECT COUNT(*) as count FROM exam_drafts") as cur:
+        row = await cur.fetchone()
+        total = row["count"] if row else 0
+    async with db.execute(
+        "SELECT * FROM exam_drafts ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+        [limit, offset],
+    ) as cur:
+        rows = await cur.fetchall()
+    drafts = []
+    for r in rows:
+        rec = _row_to_exam_draft(r)
+        async with db.execute(
+            "SELECT COUNT(*) as cnt, COALESCE(SUM(COALESCE(edq.marks_override, q.marks, 1)), 0) as tm "
+            "FROM exam_draft_questions edq "
+            "LEFT JOIN questions q ON edq.question_id = q.question_id "
+            "WHERE edq.draft_id = ?",
+            [rec.draft_id],
+        ) as cur2:
+            crow = await cur2.fetchone()
+        rec.total_questions = crow["cnt"] if crow else 0
+        rec.total_marks = crow["tm"] if crow else 0
+        drafts.append(rec)
+    return drafts, total
+
+
+async def patch_exam_draft_db(
+    db: aiosqlite.Connection,
+    draft_id: str,
+    patch: ExamDraftPatch,
+) -> Optional[ExamDraftRecord]:
+    updates: list[str] = []
+    params: list[Any] = []
+    for field in ["title", "exam_type", "school_name", "school_logo_url", "subject",
+                  "class_grade", "academic_year", "full_marks", "pass_marks",
+                  "duration_minutes", "instructions", "status"]:
+        val = getattr(patch, field)
+        if val is not None:
+            updates.append(f"{field} = ?")
+            params.append(val.value if hasattr(val, "value") else val)
+    if not updates:
+        return await get_exam_draft_db(db, draft_id)
+    now = datetime.now(timezone.utc).isoformat()
+    updates.append("updated_at = ?")
+    params.append(now)
+    params.append(draft_id)
+    await db.execute(f"UPDATE exam_drafts SET {', '.join(updates)} WHERE draft_id = ?", params)
+    await db.commit()
+    return await get_exam_draft_db(db, draft_id)
+
+
+async def add_questions_to_exam_draft_db(
+    db: aiosqlite.Connection,
+    draft_id: str,
+    question_ids: list[str],
+    include_answer: bool = True,
+) -> Optional[ExamDraftRecord]:
+    draft = await get_exam_draft_db(db, draft_id)
+    if not draft:
+        return None
+    existing_qids = {item.question_id for item in draft.questions}
+    next_index = len(draft.questions)
+    for qid in question_ids:
+        if qid in existing_qids:
+            continue
+        item_id = str(uuid.uuid4())
+        await db.execute(
+            """INSERT INTO exam_draft_questions
+               (item_id, draft_id, question_id, order_index, include_answer)
+               VALUES (?,?,?,?,?)""",
+            (item_id, draft_id, qid, next_index, int(include_answer)),
+        )
+        existing_qids.add(qid)
+        next_index += 1
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute("UPDATE exam_drafts SET updated_at = ? WHERE draft_id = ?", (now, draft_id))
+    await db.commit()
+    return await get_exam_draft_db(db, draft_id)
+
+
+async def patch_exam_draft_item_db(
+    db: aiosqlite.Connection,
+    item_id: str,
+    patch: ExamDraftItemPatch,
+) -> bool:
+    updates: list[str] = []
+    params: list[Any] = []
+    if patch.marks_override is not None:
+        updates.append("marks_override = ?"); params.append(patch.marks_override)
+    if patch.question_number_label is not None:
+        updates.append("question_number_label = ?"); params.append(patch.question_number_label)
+    if patch.include_answer is not None:
+        updates.append("include_answer = ?"); params.append(int(patch.include_answer))
+    if patch.question_text is not None:
+        updates.append("question_text_override = ?"); params.append(patch.question_text)
+    if patch.answer_text is not None:
+        updates.append("answer_text_override = ?"); params.append(patch.answer_text)
+    if not updates:
+        return True
+    params.append(item_id)
+    await db.execute(f"UPDATE exam_draft_questions SET {', '.join(updates)} WHERE item_id = ?", params)
+    async with db.execute("SELECT draft_id FROM exam_draft_questions WHERE item_id = ?", [item_id]) as cur:
+        r = await cur.fetchone()
+    if r:
+        now = datetime.now(timezone.utc).isoformat()
+        await db.execute("UPDATE exam_drafts SET updated_at = ? WHERE draft_id = ?", (now, r["draft_id"]))
+    await db.commit()
+    return True
+
+
+async def remove_question_from_exam_draft_db(
+    db: aiosqlite.Connection,
+    draft_id: str,
+    item_id: str,
+) -> Optional[ExamDraftRecord]:
+    await db.execute(
+        "DELETE FROM exam_draft_questions WHERE item_id = ? AND draft_id = ?",
+        [item_id, draft_id],
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute("UPDATE exam_drafts SET updated_at = ? WHERE draft_id = ?", (now, draft_id))
+    await db.commit()
+    return await get_exam_draft_db(db, draft_id)
+
+
+async def delete_exam_draft_db(
+    db: aiosqlite.Connection,
+    draft_id: str,
+) -> bool:
+    await db.execute("DELETE FROM exam_drafts WHERE draft_id = ?", [draft_id])
+    await db.commit()
+    return True
+
+
+async def share_exam_draft_db(
+    db: aiosqlite.Connection,
+    draft_id: str,
+    students: Optional[list[str]],
+) -> Optional[ExamDraftRecord]:
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE exam_drafts SET status = 'shared', updated_at = ? WHERE draft_id = ?",
+        (now, draft_id),
+    )
+    await db.execute("DELETE FROM exam_draft_assignees WHERE draft_id = ?", [draft_id])
+    if students:
+        for student in students:
+            await db.execute(
+                "INSERT OR IGNORE INTO exam_draft_assignees (draft_id, student) VALUES (?,?)",
+                (draft_id, student),
+            )
+    await db.commit()
+    return await get_exam_draft_db(db, draft_id)
+
+
+async def get_exam_drafts_for_student_db(
+    db: aiosqlite.Connection,
+    username: str,
+) -> list[ExamDraftRecord]:
+    sql = """
+        SELECT DISTINCT ed.draft_id
+        FROM exam_drafts ed
+        WHERE ed.status = 'shared'
+          AND (
+            NOT EXISTS (SELECT 1 FROM exam_draft_assignees ea WHERE ea.draft_id = ed.draft_id)
+            OR EXISTS (SELECT 1 FROM exam_draft_assignees ea WHERE ea.draft_id = ed.draft_id AND ea.student = ?)
+          )
+        ORDER BY ed.created_at DESC
+    """
+    async with db.execute(sql, [username]) as cur:
+        rows = await cur.fetchall()
+    result = []
+    for r in rows:
+        d = await get_exam_draft_db(db, r["draft_id"])
+        if d:
+            result.append(d)
+    return result

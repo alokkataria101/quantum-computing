@@ -18,7 +18,7 @@ from . import auth as auth_module
 from .auth import User, page_admin, page_user
 from .config import settings
 from .database import init_db, close_db, get_db
-from .routers import books, index, questions, jobs_export, ai, shared, compile as compile_router, assignments
+from .routers import books, index, questions, jobs_export, ai, shared, compile as compile_router, assignments, exam_drafts as exam_drafts_router
 from .routers import auth as auth_router
 from .storage import crops_dir
 
@@ -160,6 +160,7 @@ app.include_router(books.router)
 app.include_router(index.router)
 app.include_router(questions.router)
 app.include_router(assignments.router)
+app.include_router(exam_drafts_router.router)
 app.include_router(jobs_export.router)
 app.include_router(ai.router)
 app.include_router(shared.router)
@@ -488,6 +489,36 @@ async def ui_assignments(
             "books": all_books,
             "assignments": all_assignments,
             "active_assignment": active_assignment,
+        },
+    )
+
+
+# ── UI — Exam Draft (Exam Paper Builder) ─────────────────────────────────────
+
+@app.get("/ui/exam-draft", response_class=HTMLResponse, include_in_schema=False)
+async def ui_exam_draft(
+    request: Request,
+    draft_id: Optional[str] = None,
+    user: User = Depends(page_user),
+):
+    from .database import get_exam_draft_db, get_or_create_active_draft_db, list_exam_drafts_db
+
+    db = await get_db()
+    drafts, _ = await list_exam_drafts_db(db, limit=20)
+
+    active_draft = None
+    if draft_id:
+        active_draft = await get_exam_draft_db(db, draft_id)
+    elif user.is_admin:
+        active_draft = await get_or_create_active_draft_db(db, user.username)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="exam_draft.html",
+        context={
+            "user": user,
+            "drafts": drafts,
+            "active_draft": active_draft,
         },
     )
 
