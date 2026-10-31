@@ -501,6 +501,7 @@ async def ui_exam_draft(
     draft_id: Optional[str] = None,
     user: User = Depends(page_user),
 ):
+    import json as _json
     from .database import get_exam_draft_db, get_or_create_active_draft_db, list_exam_drafts_db
 
     db = await get_db()
@@ -512,6 +513,8 @@ async def ui_exam_draft(
     elif user.is_admin:
         active_draft = await get_or_create_active_draft_db(db, user.username)
 
+    active_draft_json = _json.dumps(active_draft.model_dump(mode="json")) if active_draft else "null"
+
     return templates.TemplateResponse(
         request=request,
         name="exam_draft.html",
@@ -519,6 +522,7 @@ async def ui_exam_draft(
             "user": user,
             "drafts": drafts,
             "active_draft": active_draft,
+            "active_draft_json": active_draft_json,
         },
     )
 

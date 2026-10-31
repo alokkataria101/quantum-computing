@@ -202,7 +202,7 @@ header .title{font-weight:600;font-size:.88em;flex:1}
 
 <script>
 const IS_ADMIN = {{ 'true' if user.is_admin else 'false' }};
-let draft = {% if active_draft %}{{ active_draft | tojson }}{% else %}null{% endif %};
+let draft = {{ active_draft_json | safe }};
 let editingItemId = null;
 let _saveTimer = null;
 
