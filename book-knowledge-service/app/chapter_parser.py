@@ -210,6 +210,16 @@ def parse_chapters_from_text(
     return chapters
 
 
+def _number_sequentially(chapters: list[ChapterRecord]) -> None:
+    """Chapters found from printed headings carry the book's own numbers, which
+    need not start at 1 (volume 2 of a series starts at 23). Number them 1, 2, 3...
+    in book order and keep the printed number alongside. `chapter_id` is left alone
+    so shared questions that point at it survive a re-index."""
+    for i, ch in enumerate(chapters, 1):
+        ch.printed_number = ch.number
+        ch.number = i
+
+
 def detect_chapters(
     book_id: str,
     meta: PDFMeta,
@@ -225,10 +235,12 @@ def detect_chapters(
     if not chapters:
         logger.info("No TOC bookmarks found for book %s; trying the printed contents.", book_id)
         chapters = parse_chapters_from_contents(book_id, pages)
+        _number_sequentially(chapters)
 
     if not chapters:
         logger.info("No printed contents found for book %s; inferring from text.", book_id)
         chapters = parse_chapters_from_text(book_id, pages)
+        _number_sequentially(chapters)
 
     if not chapters:
         # Single-chapter fallback: treat whole book as one chapter

@@ -26,8 +26,10 @@ header h1{margin:0;font-size:1.15em;font-weight:600}
 .btn-del:hover{background:#fef2f2}
 .bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .row-actions{display:flex;justify-content:space-between;align-items:center}
-.batch-head{display:flex;align-items:center;gap:12px;margin:14px 0 2px;font-size:.78em;color:#6b7280}
-.dl-link{color:#059669;font-weight:600;text-decoration:none}.dl-link:hover{text-decoration:underline}
+.batch{border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-top:10px;background:#fff}
+.batch-top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.batch-info{flex:1}
+.batch summary{cursor:pointer;font-size:.8em;color:#4a9edd;margin-top:8px}
 /* Shared PDFs */
 .pdf-section{margin-top:28px}
 .pdf-section h2{font-size:1em;font-weight:600;margin:0 0 12px;color:#1f2328}
@@ -151,22 +153,18 @@ async function load() {
     const f = items[0];
     const chTitle = (f.chapter_title || '').replace(/\s+/g, ' ');
     const heading = `${esc(f.book_title || 'Book')} › ${f.chapter_number != null ? 'Ch.' + f.chapter_number + ' ' : ''}${esc(chTitle)}`;
-    // Show questions in the order they were shared; one header + PDF link per share batch
-    // (a batch = one Share action: same sharer and shared_at).
-    let batchKey = null, n = 0;
-    const cards = items.slice().reverse().map(t => {
-      let header = '';
+    // One card per share batch (a batch = one Share action: same sharer and shared_at),
+    // newest first, like the Shared PDFs below. Questions are tucked behind "View questions".
+    const batches = new Map();
+    items.forEach(t => {
       const key = t.shared_by + '|' + t.shared_at;
-      if (key !== batchKey) {
-        batchKey = key; n = 0;
-        const size = items.filter(x => x.shared_by + '|' + x.shared_at === key).length;
-        header = `<div class="batch-head">
-          <span>Shared ${new Date(t.shared_at).toLocaleString()} · ${size} question${size !== 1 ? 's' : ''}</span>
-          <a class="dl-link" href="/shared/${encodeURIComponent(t.share_id)}/batch-download">⬇ Download PDF</a>
-        </div>`;
-      }
-      const i = n++;
-      return header + `
+      if (!batches.has(key)) batches.set(key, []);
+      batches.get(key).push(t);
+    });
+    const cards = [...batches.values()].map(batch => {
+      const qs = batch.slice().reverse();          // order they were shared
+      const b = qs[0];
+      const questions = qs.map((t, i) => `
       <div class="task">
         <div class="t-type">${esc(t.type || 'question')}</div>
         <div class="t-text"><strong>Q${i + 1}.</strong> ${esc(t.question)}</div>
@@ -179,6 +177,17 @@ async function load() {
           </div>
           ${IS_ADMIN ? `<button class="btn-del" onclick="removeTask('${esc(t.share_id)}')">Remove</button>` : ''}
         </div>
+      </div>`).join('');
+      return `<div class="batch">
+        <div class="batch-top">
+          <div class="batch-info">
+            <div class="pdf-label">${qs.length} question${qs.length !== 1 ? 's' : ''}</div>
+            <div class="pdf-meta">Shared by ${esc(b.shared_by)} · ${new Date(b.shared_at).toLocaleString()}
+              ${IS_ADMIN ? ' · ' + (b.assigned_to.length ? 'to ' + esc(b.assigned_to.join(', ')) : 'all students') : ''}</div>
+          </div>
+          <a class="btn-dl" href="/shared/${encodeURIComponent(b.share_id)}/batch-download">⬇ Download PDF</a>
+        </div>
+        <details><summary>View questions</summary>${questions}</details>
       </div>`;
     }).join('');
     return `<div class="group">

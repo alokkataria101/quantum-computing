@@ -19,6 +19,17 @@ def _ensure_dirs() -> None:
     settings.books_dir.mkdir(parents=True, exist_ok=True)
     settings.indexes_dir.mkdir(parents=True, exist_ok=True)
     settings.exports_dir.mkdir(parents=True, exist_ok=True)
+    crops_dir().mkdir(parents=True, exist_ok=True)
+
+
+def crops_dir() -> Path:
+    d = settings.storage_dir / "crops"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def question_crop_path(question_id: str) -> Path:
+    return crops_dir() / f"{question_id}.png"
 
 
 def book_path(book_id: str) -> Path:

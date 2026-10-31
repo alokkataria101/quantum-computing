@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}Assignment Builder · Book Knowledge Service{% endblock %}
+{% block content %}
+<div class="row mb-3 align-items-center">
+  <div class="col-md-7">
+    <h1 class="h3 mb-0">Assignment Builder</h1>
+    <p class="text-muted small mb-0">Create customized worksheets, question papers, and homework sets.</p>
+  </div>
+  <div class="col-md-5 text-end">
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createAssignmentModal">
+      <i class="bi bi-plus-lg"></i> New Assignment
+    </button>
+    <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#autoGenerateModal">
+      <i class="bi bi-magic"></i> Auto-Generate
+    </button>
+  </div>
+</div>
+
+<!-- Assignments List / Active Assignments -->
+<div class="row g-3">
+  <!-- Left Side: List of saved assignments -->
+  <div class="col-lg-4">
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-white py-2 fw-bold small text-muted">
+        Saved Assignments ({{ assignments|length if assignments else 0 }})
+      </div>
+      <div class="list-group list-group-flush" id="assignmentListGroup" style="max-height: 75vh; overflow-y: auto;">
+        {% if assignments %}
+          {% for a in assignments %}
+          <a href="/ui/assignments?id={{ a.id }}" class="list-group-item list-group-item-action {% if active_assignment and active_assignment.id == a.id %}active{% endif %} p-3">
+            <div class="d-flex w-100 justify-content-between align-items-start mb-1">
+              <h6 class="mb-0 fw-bold">{{ a.title }}</h6>
+              <span class="badge {% if active_assignment and active_assignment.id == a.id %}bg-light text-dark{% else %}bg-primary{% endif %}">
+                {{ a.total_marks or 0 }} Marks
+              </span>
+            </div>
+            <p class="mb-1 small text-truncate opacity-75">{{ a.description or 'No description provided' }}</p>
+            <div class="d-flex justify-content-between align-items-center small opacity-75">
+              <span>{{ a.question_count or 0 }} Questions</span>
+              <span>{{ a.target_grade or 'General' }}</span>
+            </div>
+          </a>
+          {% endfor %}
+        {% else %}
+          <div class="p-4 text-center text-muted">
+            <i class="bi bi-journal-plus display-5 text-secondary mb-2"></i>
+            <p class="small mb-0">No assignments created yet. Click "New Assignment" or "Auto-Generate" to start.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Side: Assignment Details and Worksheet Preview -->
+  <div class="col-lg-8">
+    {% if active_assignment %}
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <div>
+          <h4 class="mb-1 text-primary">{{ active_assignment.title }}</h4>
+          <p class="text-muted small mb-0">{{ active_assignment.description or 'Customized curriculum worksheet' }}</p>
+        </div>
+        <div class="btn-group">
+          <a href="/api/v1/assignments/{{ active_assignment.id }}/export?format=html" target="_blank" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-printer"></i> Print / HTML
+          </a>
+          <a href="/api/v1/assignments/{{ active_assignment.id }}/export?format=markdown" target="_blank" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-filetype-md"></i> Markdown
+          </a>
+          <a href="/api/v1/assignments/{{ active_assignment.id }}/export?format=json" target="_blank" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-filetype-json"></i> JSON
+          </a>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row g-2 mb-3 bg-light p-2 rounded small text-muted">
+          <div class="col-sm-3"><strong>Grade/Class:</strong> {{ active_assignment.target_grade or 'General' }}</div>
+          <div class="col-sm-3"><strong>Subject:</strong> {{ active_assignment.subject or 'All' }}</div>
+          <div class="col-sm-3"><strong>Total Questions:</strong> {{ active_assignment.questions|length }}</div>
+          <div class="col-sm-3"><strong>Total Marks:</strong> {{ active_assignment.total_marks }}</div>
+        </div>
+
+        <h5 class="h6 fw-bold mb-3 text-dark">Questions in this Assignment</h5>
+        {% if active_assignment.questions %}
+          <div class="list-group mb-3">
+            {% for q in active_assignment.questions %}
+            <div class="list-group-item p-3 mb-2 rounded border shadow-sm">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="badge bg-dark">Q{{ loop.index }}</span>
+                <div>
+                  <span class="badge bg-secondary me-1">{{ q.question_type }}</span>
+                  <span class="badge bg-info text-dark me-1">{{ q.difficulty }}</span>
+                  <span class="badge bg-success">{{ q.marks or 1 }} mark(s)</span>
+                </div>
+              </div>
+              <p class="mb-2 fw-medium text-dark">{{ q.text }}</p>
+
+              {% if q.image_url %}
+              <div class="mb-2">
+                <img src="{{ q.image_url }}" alt="Diagram / Formula" class="img-fluid border rounded" style="max-height: 180px;">
+              </div>
+              {% endif %}
+
+              {% if q.options %}
+              <div class="row g-2 mt-1">
+                {% for opt in q.options %}
+                <div class="col-md-6">
+                  <div class="p-2 border rounded bg-light small">
+                    <strong>({{ opt.key }})</strong> {{ opt.text }}
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-info small">
+            No questions attached to this assignment yet. Browse the <a href="/ui/question-bank">Question Bank</a> to select and add questions!
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="card shadow-sm border-0 text-center p-5">
+      <div class="card-body">
+        <i class="bi bi-clipboard-plus display-3 text-secondary mb-3"></i>
+        <h4 class="text-dark">Select or Create an Assignment</h4>
+        <p class="text-muted small">Choose an assignment from the left panel, or click <strong>New Assignment</strong> or <strong>Auto-Generate</strong> above to create one.</p>
+        <div class="d-flex justify-content-center gap-2 mt-3">
+          <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createAssignmentModal">
+            <i class="bi bi-plus-lg"></i> Create Manually
+          </button>
+          <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#autoGenerateModal">
+            <i class="bi bi-magic"></i> Auto-Generate from Bank
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal: Create Assignment Manually -->
+<div class="modal fade" id="createAssignmentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="createAssignmentForm" onsubmit="handleCreateAssignment(event)">
+        <div class="modal-header">
+          <h5 class="modal-title">Create New Assignment</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Assignment Title *</label>
+            <input type="text" class="form-control" name="title" required placeholder="e.g., Physics Unit 1 Quiz">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Description / Instructions</label>
+            <textarea class="form-control" name="description" rows="2" placeholder="e.g., Answer all questions. Calculator permitted."></textarea>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold">Subject</label>
+              <input type="text" class="form-control form-control-sm" name="subject" placeholder="e.g., Physics">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold">Target Grade / Class</label>
+              <input type="text" class="form-control form-control-sm" name="target_grade" placeholder="e.g., Grade 10">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Create Assignment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Auto Generate Assignment -->
+<div class="modal fade" id="autoGenerateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="autoGenerateForm" onsubmit="handleAutoGenerate(event)">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-magic text-success"></i> Auto-Generate Assignment</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Title *</label>
+            <input type="text" class="form-control" name="title" required placeholder="e.g., Chapter 3 Automated Quiz">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold">Select Book (Optional)</label>
+              <select class="form-select form-select-sm" name="book_id">
+                <option value="">All Books</option>
+                {% for b in books %}
+                <option value="{{ b.id }}">{{ b.title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold">Question Type</label>
+              <select class="form-select form-select-sm" name="question_type">
+                <option value="">Any Type</option>
+                <option value="mcq">MCQ Only</option>
+                <option value="numerical">Numerical Only</option>
+                <option value="short_answer">Short Answer Only</option>
+                <option value="long_answer">Long Answer Only</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold">Difficulty</label>
+              <select class="form-select form-select-sm" name="difficulty">
+                <option value="">Any Difficulty</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold">Number of Questions</label>
+              <input type="number" class="form-control form-control-sm" name="num_questions" value="10" min="1" max="100">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-magic"></i> Generate Now</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+async function handleCreateAssignment(event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+  const payload = {
+    title: formData.get('title'),
+    description: formData.get('description'),
+    subject: formData.get('subject') || null,
+    target_grade: formData.get('target_grade') || null,
+    question_ids: []
+  };
+
+  try {
+    const res = await fetch('/api/v1/assignments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      window.location.href = '/ui/assignments?id=' + data.id;
+    } else {
+      alert('Failed to create assignment.');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Network error.');
+  }
+}
+
+async function handleAutoGenerate(event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+  const payload = {
+    title: formData.get('title'),
+    book_id: formData.get('book_id') || null,
+    question_type: formData.get('question_type') || null,
+    difficulty: formData.get('difficulty') || null,
+    num_questions: parseInt(formData.get('num_questions'), 10) || 10
+  };
+
+  try {
+    const res = await fetch('/api/v1/assignments/auto-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      window.location.href = '/ui/assignments?id=' + data.id;
+    } else {
+      const err = await res.json();
+      alert(err.detail || 'Failed to auto-generate assignment.');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Network error.');
+  }
+}
+</script>
+{% endblock %}

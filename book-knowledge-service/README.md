@@ -44,6 +44,7 @@ Any number of users can be logged in at the same time, each with their own sessi
 | Setting | Default | Meaning |
 |---|---|---|
 | `AI_MAX_CONCURRENCY` | `4` | Max simultaneous watsonx calls **per worker**; extra requests wait their turn instead of hitting 429 |
+| `AI_RATE_LIMIT_RETRIES` | `4` | Times a 429 is retried (2s, 4s, 8s, 16s back-off) before the user sees "rate limit reached". A `consumption_limit_reached` (quota used up) is never retried |
 
 Notes: PyMuPDF work is serialised within one worker (it is single-threaded), so extra workers are what give parallel PDF rendering. Only run the PDF indexing job from one place at a time; the SQLite database is shared by all workers.
 
@@ -66,6 +67,9 @@ The service ships with a built-in web interface — no API knowledge needed.
 | URL | What you get |
 |-----|-------------|
 | **http://localhost:8000/login** | Sign in as admin or student |
+| **http://localhost:8000/ui/question-bank** | **Universal Question Bank** — visual grid, faceted search (type, difficulty, subject, grade), and direct assignment creator |
+| **http://localhost:8000/ui/review** | **Split-Screen Review Studio** — side-by-side original PDF page vs editable question cards with approval workflow |
+| **http://localhost:8000/ui/assignments** | **Interactive Assignment Builder** — manual and auto-generation of worksheets with multi-format export (HTML, Markdown, JSON) |
 | **http://localhost:8000/ui/students** | Add students *(admin only)* |
 | **http://localhost:8000/ui/tasks** | Student: *My Tasks* (questions assigned to me). Admin: everything shared, and with whom, with Remove / Clear this chapter / Clear all tasks buttons |
 | **http://localhost:8000/ui** | Library home — all books, upload, index |
@@ -1031,6 +1035,15 @@ cd book-knowledge-service
 | GET | `/books/{book_id}/search?q=...` | User | Full-text search |
 | POST | `/books/{book_id}/chapters/{ch_id}/extract` | User | Start pattern extraction |
 | GET | `/books/{book_id}/chapters/{ch_id}/questions` | User | List extracted questions |
+| GET | `/api/v1/questions/search` | User | Multi-facet Question Bank search (type, difficulty, subject, grade, text) |
+| GET | `/api/v1/questions/{id}` | User | Get question by ID with 3-layer data (crops, options, metadata) |
+| PATCH | `/api/v1/questions/{id}` | User | Update question fields & review status (approve, reject, edit) |
+| GET | `/crops/{question_id}.png` | User | Serve visual image crop of question (Layer A) |
+| POST | `/api/v1/assignments` | User | Create custom assignment / worksheet |
+| GET | `/api/v1/assignments` | User | List saved assignments |
+| GET | `/api/v1/assignments/{id}` | User | Get assignment details with attached questions |
+| POST | `/api/v1/assignments/auto-generate` | User | Auto-generate balanced assignment from repository |
+| GET | `/api/v1/assignments/{id}/export` | User | Export assignment worksheet (HTML / Markdown / JSON / Text) |
 | GET | `/jobs/{job_id}` | User | Job progress |
 | GET | `/books/{book_id}/export?fmt=json\|csv\|html\|pdf` | User | Export questions |
 | POST | `/books/{book_id}/compile-pdf` | Admin | Start a compile-PDF job (notes/questions/both, chapter selection) |
@@ -1083,7 +1096,8 @@ book-knowledge-service/
 │       ├── auth.py           /auth/login, /logout, /me, /students
 │       ├── books.py          POST/GET/DELETE /books
 │       ├── index.py          /index, /chapters, /pages, /search
-│       ├── questions.py      /questions, /extract, /generate (pattern)
+│       ├── questions.py      /questions, /extract, /generate (pattern), /api/v1/questions/search, PATCH
+│       ├── assignments.py    /api/v1/assignments, /auto-generate, /export
 │       ├── ai.py             /ask, /generate-questions (watsonx)
 │       ├── shared.py         admin-shared questions: list / share / edit / unshare
 │       ├── compile.py        /compile-pdf, /compiled-pdfs, /shared-pdfs — compile history + sharing
@@ -1091,11 +1105,15 @@ book-knowledge-service/
 ├── static/
 │   └── logo.svg              school crest — served at /static/logo.svg
 ├── templates/
+│   ├── base.html             Bootstrap 5 base template with navigation bar
 │   ├── login.html            sign-in page (school branding)
 │   ├── index.html            library home — admin portal / student portal
+│   ├── question_bank.html    universal visual question bank grid & selection
+│   ├── review_studio.html    split-screen PDF review & verification studio
+│   ├── assignments.html      assignment builder & printable worksheet generator
 │   ├── students.html         add/list students (admin)
 │   ├── compiled_pdfs.html    compiled PDFs history page (admin)
-│   ├── _userbar.html         user name + logout (included in headers)
+│   ├── _userbar.html         user name + navigation links + logout
 │   └── viewer.html           Jinja2 page viewer
 ├── tests/
 │   ├── conftest.py

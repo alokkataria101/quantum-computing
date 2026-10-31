@@ -445,12 +445,13 @@ def chapter_specs_from_db(db_path: Path, stem: str) -> list[ChapterSpec]:
         if not row:
             raise SystemExit(f"book {stem!r} not found in {db_path}")
         rows = con.execute(
-            "SELECT number, title, page_start, page_end FROM chapters WHERE book_id=? ORDER BY page_start",
+            "SELECT COALESCE(printed_number, number), title, page_start, page_end "
+            "FROM chapters WHERE book_id=? ORDER BY page_start",
             (row[0],)).fetchall()
     finally:
         con.close()
     specs = []
-    for number, title, a, b in rows:
+    for number, title, a, b in rows:     # number = the one printed in the book
         t = re.sub(r"\s+", " ", title).strip()
         m = re.match(r"(?i)CHA\w{2,5}\s+(\d+)\s*[:\-]?\s*(.*)$", t)
         if m:

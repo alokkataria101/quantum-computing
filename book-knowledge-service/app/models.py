@@ -39,14 +39,36 @@ class CompileMode(str, Enum):
 
 
 class QuestionType(str, Enum):
-    example        = "example"
-    solved_example = "solved_example"
-    exercise       = "exercise"
-    short_answer   = "short_answer"
-    objective_1    = "objective_1"
-    objective_2    = "objective_2"
-    worked_example = "worked_example"
-    other          = "other"
+    example             = "example"
+    solved_example      = "solved_example"
+    exercise            = "exercise"
+    short_answer        = "short_answer"
+    long_answer         = "long_answer"
+    objective_1         = "objective_1"
+    objective_2         = "objective_2"
+    worked_example      = "worked_example"
+    mcq                 = "mcq"
+    true_false          = "true_false"
+    fill_in_the_blanks  = "fill_in_the_blanks"
+    match_the_following = "match_the_following"
+    numerical           = "numerical"
+    diagram_based       = "diagram_based"
+    assertion_reason    = "assertion_reason"
+    case_based          = "case_based"
+    other               = "other"
+
+
+class DifficultyLevel(str, Enum):
+    easy   = "easy"
+    medium = "medium"
+    hard   = "hard"
+
+
+class ReviewStatus(str, Enum):
+    pending   = "pending"
+    approved  = "approved"
+    rejected  = "rejected"
+    modified  = "modified"
 
 
 class ExportFormat(str, Enum):
@@ -91,7 +113,8 @@ class BookList(BaseModel):
 class ChapterRecord(BaseModel):
     chapter_id: str
     book_id: str
-    number: int                       # 0 = front matter
+    number: int                       # 0 = front matter, then 1, 2, 3... in book order
+    printed_number: Optional[int] = None   # number printed in the book (e.g. 23 in volume 2)
     title: str
     page_start: int
     page_end: int
@@ -119,7 +142,48 @@ class PageRecord(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Question / Example ────────────────────────────────────────────────────────
+# ── 3-Layer Question Representation ──────────────────────────────────────────
+
+class BoundingBox(BaseModel):
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+# Layer A: Original Image Representation
+class QuestionImageCrop(BaseModel):
+    page_number: int
+    bounding_box: Optional[BoundingBox] = None
+    image_url: Optional[str] = None
+    image_path: Optional[str] = None
+
+
+# Layer B: Structured Text Representation
+class StructuredQuestionText(BaseModel):
+    question_no: Optional[str] = None
+    question_type: QuestionType = QuestionType.exercise
+    question_text: str
+    options: list[str] = []
+    sub_parts: list[str] = []
+    answer_text: Optional[str] = None
+    solution_text: Optional[str] = None
+    hint: Optional[str] = None
+
+
+# Layer C: Semantic Representation
+class SemanticQuestionMetadata(BaseModel):
+    subject: Optional[str] = None
+    class_grade: Optional[int] = None
+    chapter: Optional[str] = None
+    topic: Optional[str] = None
+    difficulty: DifficultyLevel = DifficultyLevel.medium
+    learning_outcome: Optional[str] = None
+    marks: int = 1
+    tags: list[str] = []
+
+
+# ── Question Record (Master Object) ───────────────────────────────────────────
 
 class QuestionRecord(BaseModel):
     question_id: str
@@ -127,14 +191,35 @@ class QuestionRecord(BaseModel):
     chapter_id: str
     chapter_number: int
     question_type: QuestionType
-    question_number: Optional[str] = None   # e.g. "1.2", "A", "iii"
+    question_number: Optional[str] = None   # e.g. "1.2", "A", "Q12"
     question_text: str
+    options: list[str] = []
+    sub_parts: list[str] = []
     solution_text: Optional[str] = None
     answer_text: Optional[str] = None
+    hint: Optional[str] = None
     page_start: int
     page_end: int
     confidence: float = 1.0
-    extraction_method: str = "pattern"      # "pattern" | "llm"
+    extraction_method: str = "pattern"      # "pattern" | "llm" | "docling"
+    # Layer A (Image crop)
+    bounding_box: Optional[BoundingBox] = None
+    image_url: Optional[str] = None
+    image_path: Optional[str] = None
+    # Layer C (Semantic metadata)
+    subject: Optional[str] = None
+    class_grade: Optional[int] = None
+    topic: Optional[str] = None
+    difficulty: DifficultyLevel = DifficultyLevel.medium
+    learning_outcome: Optional[str] = None
+    marks: int = 1
+    tags: list[str] = []
+    # Governance & Traceability
+    review_status: ReviewStatus = ReviewStatus.pending
+    content_hash: Optional[str] = None
+    source_question_id: Optional[str] = None
+    book_title: Optional[str] = None
+    chapter_title: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -142,7 +227,106 @@ class QuestionRecord(BaseModel):
 class QuestionList(BaseModel):
     questions: list[QuestionRecord]
     total: int
-    chapter_id: str
+    chapter_id: Optional[str] = None
+
+
+class QuestionPatchRequest(BaseModel):
+    """Payload for Question Review Studio edits."""
+    question_text: Optional[str] = None
+    question_type: Optional[QuestionType] = None
+    question_number: Optional[str] = None
+    options: Optional[list[str]] = None
+    sub_parts: Optional[list[str]] = None
+    answer_text: Optional[str] = None
+    solution_text: Optional[str] = None
+    hint: Optional[str] = None
+    difficulty: Optional[DifficultyLevel] = None
+    marks: Optional[int] = None
+    subject: Optional[str] = None
+    class_grade: Optional[int] = None
+    topic: Optional[str] = None
+    learning_outcome: Optional[str] = None
+    tags: Optional[list[str]] = None
+    review_status: Optional[ReviewStatus] = None
+    bounding_box: Optional[BoundingBox] = None
+
+
+class QuestionSearchQuery(BaseModel):
+    query: Optional[str] = None
+    book_ids: Optional[list[str]] = None
+    chapter_ids: Optional[list[str]] = None
+    subject: Optional[str] = None
+    class_grade: Optional[int] = None
+    topics: Optional[list[str]] = None
+    question_types: Optional[list[QuestionType]] = None
+    difficulty: Optional[list[DifficultyLevel]] = None
+    min_marks: Optional[int] = None
+    max_marks: Optional[int] = None
+    has_diagrams: Optional[bool] = None
+    review_status: Optional[ReviewStatus] = None
+    limit: int = Field(20, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+
+class QuestionSearchResponse(BaseModel):
+    questions: list[QuestionRecord]
+    total: int
+    page: int = 1
+    page_size: int = 20
+
+
+# ── Assignment Builder ────────────────────────────────────────────────────────
+
+class AssignmentQuestionItem(BaseModel):
+    question_id: str
+    order_index: int = 0
+    marks_override: Optional[int] = None
+    question: Optional[QuestionRecord] = None
+
+
+class AssignmentCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = ""
+    subject: Optional[str] = None
+    class_grade: Optional[int] = None
+    question_ids: list[str] = []
+    target_marks: Optional[int] = None
+
+
+class AssignmentRecord(BaseModel):
+    assignment_id: str
+    title: str
+    description: str = ""
+    subject: Optional[str] = None
+    class_grade: Optional[int] = None
+    total_questions: int = 0
+    total_marks: int = 0
+    questions: list[AssignmentQuestionItem] = []
+    created_by: str = "admin"
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AssignmentList(BaseModel):
+    assignments: list[AssignmentRecord]
+    total: int
+
+
+class AssignmentAddQuestionsRequest(BaseModel):
+    question_ids: list[str] = Field(..., min_length=1)
+
+
+class AssignmentAutoGenerateRequest(BaseModel):
+    title: str
+    subject: Optional[str] = None
+    class_grade: Optional[int] = None
+    chapter_ids: list[str] = []
+    total_questions: int = Field(15, ge=1, le=100)
+    total_marks: Optional[int] = None
+    question_types: Optional[list[QuestionType]] = None
+    difficulty_levels: Optional[list[DifficultyLevel]] = None
 
 
 # ── Generate ──────────────────────────────────────────────────────────────────

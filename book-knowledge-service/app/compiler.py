@@ -58,10 +58,12 @@ def _chapter_specs_from_rows(rows) -> list[ChapterSpec]:
     import re
     specs = []
     for r in rows:
-        number = r["number"]
+        # The number printed in the book (matches example labels like "23.4"); the
+        # sequential `number` is only for listing chapters in the app.
+        number = r["printed_number"] if "printed_number" in r.keys() and r["printed_number"] else r["number"]
         title  = re.sub(r"\s+", " ", r["title"]).strip()
         # Skip front-matter (number 0) and back-matter
-        if number == 0:
+        if r["number"] == 0:
             continue
         if re.match(r"(?i)(front matter|answers and appendices|appendix|index)", title):
             continue

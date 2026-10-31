@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block title %}Split-Screen Review Studio · Book Knowledge Service{% endblock %}
+{% block content %}
+<div class="row mb-3 align-items-center">
+  <div class="col-md-7">
+    <h1 class="h3 mb-0">Split-Screen Review Studio</h1>
+    <p class="text-muted small mb-0">Verify extracted questions against original textbook PDF pages side-by-side.</p>
+  </div>
+  <div class="col-md-5 text-end">
+    <div class="btn-group" role="group">
+      <a href="/ui/question-bank" class="btn btn-outline-primary btn-sm"><i class="bi bi-grid-3x3"></i> Question Bank</a>
+      <a href="/ui/assignments" class="btn btn-outline-secondary btn-sm"><i class="bi bi-clipboard-check"></i> Assignments</a>
+    </div>
+  </div>
+</div>
+
+<!-- Filter and Selector Bar -->
+<div class="card mb-3 shadow-sm border-0 bg-light">
+  <div class="card-body py-2">
+    <form id="studioFilterForm" class="row g-2 align-items-center">
+      <div class="col-md-4">
+        <label class="form-label small fw-bold mb-1 text-muted">Select Book</label>
+        <select class="form-select form-select-sm" id="bookSelect" name="book_id">
+          <option value="">-- All Books --</option>
+          {% for b in books %}
+          <option value="{{ b.id }}" {% if selected_book_id == b.id %}selected{% endif %}>{{ b.title }} ({{ b.id }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-bold mb-1 text-muted">Status</label>
+        <select class="form-select form-select-sm" id="statusFilter" name="status">
+          <option value="pending" {% if status == 'pending' or not status %}selected{% endif %}>Pending Review</option>
+          <option value="approved" {% if status == 'approved' %}selected{% endif %}>Approved</option>
+          <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>Rejected</option>
+          <option value="all" {% if status == 'all' %}selected{% endif %}>All Statuses</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-bold mb-1 text-muted">Type</label>
+        <select class="form-select form-select-sm" id="typeFilter" name="question_type">
+          <option value="">All Types</option>
+          <option value="mcq">MCQ</option>
+          <option value="numerical">Numerical</option>
+          <option value="short_answer">Short Answer</option>
+          <option value="long_answer">Long Answer</option>
+          <option value="proof_derivation">Proof / Derivation</option>
+          <option value="diagram_based">Diagram Based</option>
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel"></i> Load</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Split Screen Container -->
+<div class="row g-3" style="min-height: 75vh;">
+  <!-- Left Panel: PDF Page Viewer / Visual Crop Inspector -->
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100 border-0">
+      <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <span class="fw-bold small text-primary"><i class="bi bi-file-earmark-pdf"></i> Original Document Source (Layer A)</span>
+        <span class="badge bg-secondary" id="pageIndicator">Select a question</span>
+      </div>
+      <div class="card-body p-2 d-flex flex-column align-items-center justify-content-center bg-dark bg-opacity-10" id="previewContainer" style="overflow-y: auto; max-height: 80vh;">
+        <div id="noSelectionNotice" class="text-center text-muted p-5">
+          <i class="bi bi-arrow-right-circle display-4 mb-2 text-secondary"></i>
+          <p class="mb-0">Click any question on the right panel to inspect its visual crop and source context.</p>
+        </div>
+        <div id="cropPreviewWrapper" class="d-none text-center w-100">
+          <div class="card mb-2 shadow-sm border-0">
+            <div class="card-header bg-light py-1 text-start small fw-bold text-muted">
+              Visual Question Crop (Exact rendering)
+            </div>
+            <div class="card-body p-2 bg-white text-center">
+              <img id="activeCropImg" src="" alt="Question Visual Crop" class="img-fluid border rounded" style="max-height: 400px; object-fit: contain;">
+              <div id="noCropMsg" class="d-none text-muted small p-3">No direct image crop generated for this question.</div>
+            </div>
+          </div>
+          <div class="card shadow-sm border-0">
+            <div class="card-header bg-light py-1 text-start small fw-bold text-muted d-flex justify-content-between align-items-center">
+              <span>Full Page Viewer</span>
+              <a id="openFullPdfLink" href="#" target="_blank" class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size: 0.75rem;">
+                <i class="bi bi-box-arrow-up-right"></i> Open PDF
+              </a>
+            </div>
+            <div class="card-body p-1 bg-white">
+              <iframe id="pdfFrame" src="" class="w-100 rounded border" style="height: 350px;"></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel: Extracted Question Editor -->
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100 border-0">
+      <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <span class="fw-bold small text-dark"><i class="bi bi-pencil-square"></i> Structured Extraction (Layer B & C)</span>
+        <span class="badge bg-primary" id="questionCountBadge">{{ questions|length if questions else 0 }} items</span>
+      </div>
+      <div class="card-body p-2" style="overflow-y: auto; max-height: 80vh;" id="questionsList">
+        {% if questions %}
+          {% for q in questions %}
+          <div class="card mb-2 question-studio-card border {% if q.review_status == 'approved' %}border-success{% elif q.review_status == 'rejected' %}border-danger{% else %}border-light-subtle{% endif %}"
+               id="card-{{ q.id }}"
+               data-id="{{ q.id }}"
+               data-crop="{{ q.image_url or '' }}"
+               data-book-id="{{ q.book_id }}"
+               data-page="{{ q.page_start }}"
+               onclick="selectQuestion('{{ q.id }}')">
+            <div class="card-body p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <span class="badge bg-dark me-1">Q{{ q.question_number or loop.index }}</span>
+                  <span class="badge bg-secondary me-1">{{ q.question_type }}</span>
+                  <span class="badge bg-info text-dark me-1">{{ q.difficulty or 'medium' }}</span>
+                  <span class="badge bg-light text-muted border me-1">{{ q.marks or 1 }} mark(s)</span>
+                  <span class="text-muted small">p. {{ q.page_start }}</span>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-success btn-sm py-0 px-2" onclick="quickUpdateStatus(event, '{{ q.id }}', 'approved')" title="Approve">
+                    <i class="bi bi-check-lg"></i>
+                  </button>
+                  <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" onclick="quickUpdateStatus(event, '{{ q.id }}', 'rejected')" title="Reject">
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Editable content fields -->
+              <div class="mb-2">
+                <textarea class="form-control form-control-sm mb-1 font-monospace q-text" id="text-{{ q.id }}" rows="3">{{ q.text }}</textarea>
+              </div>
+
+              <!-- Options if MCQ -->
+              {% if q.options %}
+              <div class="mb-2 p-2 bg-light rounded small">
+                <div class="fw-bold text-muted mb-1">MCQ Options:</div>
+                <div class="row g-1">
+                  {% for opt in q.options %}
+                  <div class="col-6">
+                    <div class="input-group input-group-sm">
+                      <span class="input-group-text bg-white">{{ opt.key or loop.index }}</span>
+                      <input type="text" class="form-control form-control-sm q-opt-{{ q.id }}" data-key="{{ opt.key }}" value="{{ opt.text }}">
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+
+              <!-- Metadata row -->
+              <div class="row g-2 align-items-center mt-1">
+                <div class="col-sm-4">
+                  <select class="form-select form-select-sm q-type" id="type-{{ q.id }}">
+                    <option value="mcq" {% if q.question_type == 'mcq' %}selected{% endif %}>MCQ</option>
+                    <option value="numerical" {% if q.question_type == 'numerical' %}selected{% endif %}>Numerical</option>
+                    <option value="short_answer" {% if q.question_type == 'short_answer' %}selected{% endif %}>Short Answer</option>
+                    <option value="long_answer" {% if q.question_type == 'long_answer' %}selected{% endif %}>Long Answer</option>
+                    <option value="proof_derivation" {% if q.question_type == 'proof_derivation' %}selected{% endif %}>Proof / Derivation</option>
+                    <option value="diagram_based" {% if q.question_type == 'diagram_based' %}selected{% endif %}>Diagram Based</option>
+                  </select>
+                </div>
+                <div class="col-sm-3">
+                  <select class="form-select form-select-sm q-diff" id="diff-{{ q.id }}">
+                    <option value="easy" {% if q.difficulty == 'easy' %}selected{% endif %}>Easy</option>
+                    <option value="medium" {% if q.difficulty == 'medium' %}selected{% endif %}>Medium</option>
+                    <option value="hard" {% if q.difficulty == 'hard' %}selected{% endif %}>Hard</option>
+                  </select>
+                </div>
+                <div class="col-sm-2">
+                  <input type="number" class="form-control form-control-sm q-marks" id="marks-{{ q.id }}" value="{{ q.marks or 1 }}" min="1" max="100">
+                </div>
+                <div class="col-sm-3 text-end">
+                  <button type="button" class="btn btn-primary btn-sm w-100" onclick="saveQuestionData(event, '{{ q.id }}')">
+                    <i class="bi bi-save"></i> Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="text-center text-muted p-5">
+            <i class="bi bi-journal-check display-4 text-secondary mb-2"></i>
+            <p>No questions found matching your filter criteria.</p>
+            <p class="small">Extract questions from a book or adjust your filters above.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentSelectedId = null;
+
+function selectQuestion(qid) {
+  currentSelectedId = qid;
+  document.querySelectorAll('.question-studio-card').forEach(el => el.classList.remove('ring', 'border-primary', 'bg-light'));
+  const card = document.getElementById('card-' + qid);
+  if (card) {
+    card.classList.add('border-primary', 'bg-light');
+  }
+
+  const cropUrl = card.getAttribute('data-crop');
+  const bookId = card.getAttribute('data-book-id');
+  const page = card.getAttribute('data-page') || 1;
+
+  document.getElementById('noSelectionNotice').classList.add('d-none');
+  document.getElementById('cropPreviewWrapper').classList.remove('d-none');
+  document.getElementById('pageIndicator').innerText = 'Page ' + page + ' (Book: ' + bookId + ')';
+
+  // Set crop image
+  const img = document.getElementById('activeCropImg');
+  const noCrop = document.getElementById('noCropMsg');
+  if (cropUrl) {
+    img.src = cropUrl;
+    img.classList.remove('d-none');
+    noCrop.classList.add('d-none');
+  } else {
+    img.classList.add('d-none');
+    noCrop.classList.remove('d-none');
+  }
+
+  // Set PDF Viewer URL
+  const pdfUrl = '/api/v1/books/' + bookId + '/raw-pdf#page=' + page;
+  document.getElementById('pdfFrame').src = pdfUrl;
+  document.getElementById('openFullPdfLink').href = pdfUrl;
+}
+
+async function quickUpdateStatus(event, qid, newStatus) {
+  if (event) event.stopPropagation();
+  try {
+    const res = await fetch('/api/v1/questions/' + qid, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ review_status: newStatus })
+    });
+    if (res.ok) {
+      const card = document.getElementById('card-' + qid);
+      card.classList.remove('border-success', 'border-danger', 'border-light-subtle');
+      if (newStatus === 'approved') card.classList.add('border-success');
+      else if (newStatus === 'rejected') card.classList.add('border-danger');
+      else card.classList.add('border-light-subtle');
+    } else {
+      alert('Failed to update status.');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Network error.');
+  }
+}
+
+async function saveQuestionData(event, qid) {
+  if (event) event.stopPropagation();
+  const text = document.getElementById('text-' + qid).value;
+  const questionType = document.getElementById('type-' + qid).value;
+  const difficulty = document.getElementById('diff-' + qid).value;
+  const marks = parseInt(document.getElementById('marks-' + qid).value, 10) || 1;
+
+  // Gather options if any
+  const optInputs = document.querySelectorAll('.q-opt-' + qid);
+  let options = null;
+  if (optInputs.length > 0) {
+    options = [];
+    optInputs.forEach(inp => {
+      options.push({
+        key: inp.getAttribute('data-key'),
+        text: inp.value
+      });
+    });
+  }
+
+  const payload = {
+    text: text,
+    question_type: questionType,
+    difficulty: difficulty,
+    marks: marks,
+    options: options
+  };
+
+  try {
+    const res = await fetch('/api/v1/questions/' + qid, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      alert('Question updated successfully!');
+    } else {
+      alert('Failed to save question updates.');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Network error while saving question.');
+  }
+}
+
+// Auto-select first question if present
+document.addEventListener('DOMContentLoaded', () => {
+  const firstCard = document.querySelector('.question-studio-card');
+  if (firstCard) {
+    firstCard.click();
+  }
+});
+</script>
+{% endblock %}

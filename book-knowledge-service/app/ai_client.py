@@ -100,7 +100,12 @@ class AIClient:
         except Exception as exc:
             msg = str(exc)
             logger.error("[AI] Generation error: %s", exc)
-            if "429" in msg or "consumption_limit_reached" in msg or "Too Many Requests" in msg:
+            if "consumption_limit_reached" in msg:
+                raise QuotaExceededError(
+                    "watsonx token quota for this plan/project is used up. Retrying will not help — "
+                    "wait for the quota to reset or upgrade the watsonx.ai plan."
+                ) from exc
+            if "429" in msg or "Too Many Requests" in msg:
                 raise RateLimitError(
                     "watsonx rate limit reached — too many concurrent requests. "
                     "Please wait a moment and try again."
@@ -112,9 +117,15 @@ class RateLimitError(Exception):
     """Raised when watsonx returns HTTP 429 Too Many Requests."""
 
 
+class QuotaExceededError(RateLimitError):
+    """watsonx says the plan's consumption limit is reached - not transient."""
+
+
 # At most this many watsonx calls run at once; the rest wait their turn instead
 # of all hitting the API together and getting 429s. Override with AI_MAX_CONCURRENCY.
 AI_MAX_CONCURRENCY = max(1, int(os.getenv("AI_MAX_CONCURRENCY", "4")))
+# A 429 is retried this many times, waiting 2s, 4s, 8s... between tries. Override with AI_RATE_LIMIT_RETRIES.
+AI_RATE_LIMIT_RETRIES = max(0, int(os.getenv("AI_RATE_LIMIT_RETRIES", "4")))
 _ai_slots: asyncio.Semaphore | None = None
 
 
@@ -124,8 +135,19 @@ async def ai_generate(client: AIClient, prompt: str, max_new_tokens: int | None 
     global _ai_slots
     if _ai_slots is None:
         _ai_slots = asyncio.Semaphore(AI_MAX_CONCURRENCY)
-    async with _ai_slots:
-        return await asyncio.to_thread(client.generate, prompt, max_new_tokens)
+    for attempt in range(AI_RATE_LIMIT_RETRIES + 1):
+        try:
+            async with _ai_slots:
+                return await asyncio.to_thread(client.generate, prompt, max_new_tokens)
+        except QuotaExceededError:
+            raise
+        except RateLimitError:
+            if attempt == AI_RATE_LIMIT_RETRIES:
+                raise
+            delay = 2 ** (attempt + 1)
+            logger.warning("[AI] rate limited - retrying in %ss (%d/%d)",
+                           delay, attempt + 1, AI_RATE_LIMIT_RETRIES)
+            await asyncio.sleep(delay)   # outside the slot so others can use it
 
 
 # Singleton — one connection shared across all requests
