@@ -3,8 +3,6 @@
   <span>{{ user.username }} · {{ user.role }}</span>
   <a href="/ui" style="color:#8fa0b0;text-decoration:none">Library</a>
   <a href="/ui/question-bank" style="color:#8fa0b0;text-decoration:none">Question Bank</a>
-  <a href="/ui/review" style="color:#8fa0b0;text-decoration:none">Review Studio</a>
-  <a href="/ui/assignments" style="color:#8fa0b0;text-decoration:none">Assignments</a>
   {% if user.is_admin %}<a href="/ui/exam-draft" style="color:#8fa0b0;text-decoration:none" id="exam-draft-link">📝 Exam Draft <span id="exam-draft-badge" style="background:#e11d48;color:#fff;border-radius:8px;padding:1px 6px;font-size:.75em;display:none">0</span></a>{% endif %}
   <a href="/ui/tasks" style="color:#8fa0b0;text-decoration:none">{% if user.is_admin %}Tasks{% else %}My Tasks{% endif %}</a>
   {% if user.is_admin %}<a href="/ui/students" style="color:#8fa0b0;text-decoration:none">Students</a>{% endif %}
